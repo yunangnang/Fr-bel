@@ -1,0 +1,14 @@
+streamlit==1.51.0
+python-dotenv==1.1.1
+Pillow==10.1.0
+moviepy==1.0.3
+requests==2.31.0
+openai==2.14.0
+runwayml==3.19.0
+google-cloud-texttospeech==2.34.0
+google-auth==2.48.0
+numpy==1.26.4
+
+# 선택적 (설치하면 추가 TTS 엔진 사용 가능)
+# edge-tts
+# google-genai
