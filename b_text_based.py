@@ -1860,7 +1860,7 @@ def run_text_analysis_mode(client, folder, txt_file):
 
     # 4. 분석 실행 버튼
     if st.button(btn_label_1, type=btn_type_1):
-        with st.spinner(f"GPT가 '{extracted_title}' 이야기를 분석 중입니다..."):
+        with st.spinner(f"'{extracted_title}' 이야기를 분석 중입니다..."):
             try:
                 # AI 분석 함수 호출 (force run)
                 result = analyze_story_structure(full_text, known_title=extracted_title)
@@ -1889,11 +1889,11 @@ def run_text_analysis_mode(client, folder, txt_file):
         st.markdown("#### 📝 전체 줄거리 요약")
         st.write(data.get("summary", ""))
         
-        st.markdown("#### 🌊 이야기 구조 (기승전결 & 페이지 범위)")
+        st.markdown("#### 🌊 기승전결 분석")
         structure = data.get("plot_structure", {})
         
         # 탭 구성
-        tab1, tab2, tab3, tab4 = st.tabs(["1. 발단 (Intro)", "2. 전개 (Dev)", "3. 위기/절정 (Climax)", "4. 결말 (Res)"])
+        tab1, tab2, tab3, tab4 = st.tabs(["1. 발단", "2. 전개", "3. 위기/절정", "4. 결말"])
         
         # 헬퍼 함수: 구조 데이터 표시
         def display_phase_info(phase_data):
@@ -1924,7 +1924,7 @@ def run_text_analysis_mode(client, folder, txt_file):
         col_msg, col_btn = st.columns([3, 1])
         with col_msg: st.caption("위 분석 내용이 맞다면 다음 단계로 넘어가세요.")
         with col_btn:
-            if st.button("➡️ Step 1.5: 등장인물 및 화자 분석 "):
+            if st.button("➡️ Step 1.5: 등장인물 분석"):
                 st.session_state.track_b_step = 2
                 st.rerun()
 
@@ -1934,8 +1934,7 @@ def run_text_analysis_mode(client, folder, txt_file):
     # Step 1 분석이 완료되었거나, 사용자가 수동으로 1.5단계를 열었을 때
     if st.session_state.get("track_b_analysis") and st.session_state.get("track_b_step", 0) >= 1:
         st.divider()
-        st.subheader("Step 1.5. 등장인물 및 화자 정밀 분석")
-        st.info("🗣️ 등장인물의 성별, 나이, 말투를 정의하고 모든 대사의 주인을 찾습니다. (TTS 및 영상 일관성용)")
+        st.subheader("Step 1.5. 등장인물 분석")
 
         # 1. 파일 경로 설정
         char_file = paths["characters"]
@@ -2160,6 +2159,77 @@ def run_text_analysis_mode(client, folder, txt_file):
                         st.warning(f"{st.session_state.tts_engine_choice_shared} 음성 생성에 실패했어요. API 키 또는 설정을 확인해주세요.")
 
                 st.divider()
+
+            # ====================================================
+            # 👁️ 생성 데이터 미리보기 (Step 4에서 이동, 편집 가능)
+            # ====================================================
+            preview_scripts = st.session_state.get("step1_scripts", [])
+            if preview_scripts:
+                st.markdown("#### 👁️ 생성 데이터 미리보기 (장면별 AI 지시문)")
+                st.caption("각 장면이 어떤 톤으로 읽힐지 미리 확인하고, **AI 지시문**을 직접 수정할 수 있습니다.")
+
+                # 데이터 준비
+                _chars_data_p = (st.session_state.get("track_b_characters") or {}).get("characters", [])
+                _dial_map_p = (st.session_state.get("track_b_characters") or {}).get("dialogue_map", [])
+                _char_tone_map_p = {c['id']: c.get('tone', '') for c in _chars_data_p}
+                _speaker_mode_p = st.session_state.get("tts_speaker_mode_shared", "다수 화자 (자동 배정)")
+
+                preview_rows = []
+                for _idx, _script in enumerate(preview_scripts):
+                    _text = _script.get("text", "")
+                    _raw_speaker = _script.get("speaker", "")
+                    _page_num = int(_script.get("source_page", 0))
+                    _speaker_id = _raw_speaker.split(" ")[0] if _raw_speaker else "narrator"
+
+                    _final_api_speaker = _speaker_id
+                    if _speaker_mode_p == "단일 화자 (Narrator Only)":
+                        _final_api_speaker = "narrator (Override)"
+
+                    # 자동 생성 프롬프트
+                    if "narrator" in _speaker_id.lower():
+                        _auto_prompt = "차분하고 명확한 발음의 나레이션 톤."
+                    else:
+                        _c_tone = _char_tone_map_p.get(_speaker_id, "일반적인 목소리")
+                        _c_ctx = find_context_by_structure(_text, _raw_speaker, _page_num, _dial_map_p)
+                        if _c_ctx:
+                            _auto_prompt = f"Tone: {_c_tone} / Situation: {_c_ctx}"
+                        else:
+                            _auto_prompt = f"Tone: {_c_tone}"
+
+                    # 사용자가 이미 편집한 값이 있으면 그것 사용
+                    _user_prompt = st.session_state.get(f"user_prompt_{_idx}")
+                    _shown_prompt = _user_prompt if _user_prompt else _auto_prompt
+
+                    preview_rows.append({
+                        "No": _idx + 1,
+                        "화자": _final_api_speaker,
+                        "대사": _text,
+                        "AI 지시문 (편집 가능)": _shown_prompt,
+                    })
+
+                edited_preview = st.data_editor(
+                    preview_rows,
+                    column_config={
+                        "No": st.column_config.NumberColumn(width="small", disabled=True),
+                        "화자": st.column_config.TextColumn(width="small", disabled=True),
+                        "대사": st.column_config.TextColumn(width="medium", disabled=True),
+                        "AI 지시문 (편집 가능)": st.column_config.TextColumn(
+                            "AI 지시문 (편집 가능)",
+                            width="large",
+                            help="직접 입력하면 그 톤으로 음성이 생성됩니다. (GPT/Gemini 엔진에 적용)",
+                        ),
+                    },
+                    use_container_width=True,
+                    hide_index=True,
+                    key="preview_prompt_editor",
+                )
+
+                # 편집한 프롬프트를 session_state에 저장 (TTS 생성 시 사용)
+                for _row in edited_preview:
+                    _i = int(_row["No"]) - 1
+                    st.session_state[f"user_prompt_{_i}"] = _row["AI 지시문 (편집 가능)"]
+            else:
+                st.caption("💡 Step 3에서 대본이 작성되면, 여기서 장면별 AI 지시문을 미리 확인·편집할 수 있습니다.")
 
             st.markdown("#### 💬 대사 분석 결과 (화자 & 페이지)")
             st.caption("각 대사가 **누구의 말**이며 **몇 페이지**에 나오는지 확인하세요.")
@@ -2574,17 +2644,20 @@ def run_text_analysis_mode(client, folder, txt_file):
             st.info(f"📊 글자 수: **{total_chars}자** (약 {est_time:.1f}초)")
 
             # ------------------------------------------------------------------
-            # [Step 4 이동] 확정 버튼
+            # [TTS 생성 트리거] 대본 확정 + TTS 자동 생성
             # ------------------------------------------------------------------
             col_msg, col_btn = st.columns([3, 1])
             with col_msg:
-                st.caption(f"현재 보고 있는 '{script_style_mode}' 대본을 최종본으로 사용하여 다음 단계로 넘어갑니다.")
+                st.caption(
+                    f"'{script_style_mode}' 대본을 확정하고 **Step 1.5에서 설정한 음성 옵션**으로 TTS를 생성합니다. "
+                    "(생성 직전, Step 1.5의 'AI 지시문' 편집 내용이 반영됩니다.)"
+                )
             with col_btn:
-                if st.button("✅ 확정 및 Step 4 이동"):
+                if st.button("🎙️ TTS 음성 생성하기", type="primary"):
                     # 1. 세션 데이터 업데이트 (편집본 반영)
                     current_data["subtitles"] = edited_subtitles
                     st.session_state.script_results[script_style_mode] = current_data
-                    st.session_state.step1_scripts = edited_subtitles # 다음 단계용
+                    st.session_state.step1_scripts = edited_subtitles # TTS 입력용
 
                     # 2. 현재 파일에 덮어쓰기 (새 버전 생성 X)
                     if current_file_path:
@@ -2595,22 +2668,18 @@ def run_text_analysis_mode(client, folder, txt_file):
                         "subtitles": edited_subtitles,
                     })
 
+                    # 3. TTS 자동 생성 플래그 켜고 step 4로 이동
                     st.session_state.track_b_step = 4
-                    st.toast("대본이 확정되었습니다.")
+                    st.session_state.auto_run_tts = True
+                    st.toast("대본 확정 → TTS 생성 중...")
                     st.rerun()
     # =========================================================
     # [Step 4] TTS 생성 및 전체 미리듣기
     # =========================================================
     if st.session_state.get("track_b_step", 0) >= 4:
-        st.divider()
-        st.subheader("Step 4. TTS 음성 생성 및 확인")
-        
-        # 1. 현재 대본 정보 확인
-        # Step 3에서 넘어온 script_ver가 없으면 1로 가정 (혹은 에러 처리)
+        # 1. 내부 상태 (UI 비노출)
         current_script_ver = st.session_state.get("current_script_ver", 1)
         current_mode = st.session_state.get("script_style_mode", "Standard")
-        
-        st.info(f"🎧 현재 **대본 Ver. {current_script_ver} ({current_mode})**을 기반으로 작업을 진행합니다.")
 
         # 2. 경로 설정
         story_dir_name = txt_file.stem
@@ -2652,51 +2721,8 @@ def run_text_analysis_mode(client, folder, txt_file):
         # 키 정렬 (최신 버전이 위로 오도록 내림차순 정렬)
         sorted_keys = sorted(version_map.keys(), reverse=True)
         
-        selected_key = None
-        
-        # [UI] 불러오기 Selectbox
-        if sorted_keys:
-            col_sel, col_sp = st.columns([1, 2])
-            with col_sel:
-                def format_func(key):
-                    s, a = key
-                    # version_map에서 정보 가져오기
-                    info = version_map[key]
-                    model_display = f" [{info['model']}]" if info['model'] else ""
-                    
-                    is_latest = (key == sorted_keys[0])
-                    return f"📜v{s} ➔ 🎧v{a}{model_display}" + (" (최신)" if is_latest else "")
-
-                selected_key = st.selectbox(
-                    f"📂 '{current_mode}' TTS 기록 불러오기:",
-                    sorted_keys,
-                    format_func=format_func,
-                    key=f"tts_sel_{current_mode}"
-                )
-                if selected_key:
-                    s_ver, a_ver = selected_key
-                    st.session_state.current_audio_ver = a_ver # 현재 오디오 버전이 어디인지 전달
-            
-                # 선택된 폴더 로드 로직
-                # path_map 대신 version_map을 사용해야 합니다.
-                if selected_key:
-                    # version_map 구조: {'path': Path객체, 'model': 문자열, 'full_name': 문자열}
-                    target_info = version_map[selected_key]
-                    target_dir = target_info["path"]  # 여기서 경로 추출
-                    
-                    # 세션 갱신 (경로가 달라졌을 때만)
-                    if st.session_state.get(f"loaded_tts_dir_{current_mode}") != str(target_dir):
-                        try:
-                            with open(target_dir / "manifest.json", "r", encoding="utf-8") as f:
-                                data = json.load(f)
-                            
-                            st.session_state.track_b_audio = data.get("audio_data", [])
-                            st.session_state.track_b_full_audio = data.get("full_audio_path", "")
-                            st.session_state.step1_scripts = data.get("scripts", [])
-                            
-                            st.session_state[f"loaded_tts_dir_{current_mode}"] = str(target_dir)
-                        except Exception as e:
-                            st.error(f"불러오기 실패: {e}")
+        # 버전 불러오기 UI는 제거 (워크숍에선 매번 새 생성)
+        selected_key = sorted_keys[0] if sorted_keys else None
 
         # ------------------------------------------------------------------
         # [Logic] 다음 오디오 버전(Next Audio Ver) 계산
@@ -2712,18 +2738,14 @@ def run_text_analysis_mode(client, folder, txt_file):
         current_full_audio = st.session_state.get("track_b_full_audio", "")
 
         # ------------------------------------------------------------------
-        # [UI] 음성 설정 요약 (Step 1.5에서 설정한 값을 읽어옴)
+        # [내부] Step 1.5에서 설정한 음성 옵션을 읽어 사용
         # ------------------------------------------------------------------
-        st.markdown("#### 🛠️ 음성 생성 설정 (Step 1.5에서 변경)")
-
         tts_engine_choice = st.session_state.get("tts_engine_choice_shared", "Naver Clova")
         speaker_mode = st.session_state.get("tts_speaker_mode_shared", "다수 화자 (자동 배정)")
         age_category = st.session_state.get("tts_age_category_shared", "미취학 (48~72개월)")
         voice_speed = st.session_state.get("tts_voice_speed_shared", 0.8)
 
         is_premium_engine = "Clova" not in tts_engine_choice
-
-        # 실제 함수에 넘길 engine string 변환
         _engine_map = {
             "Naver Clova": "clova",
             "GPT-4o Mini TTS": "gpt",
@@ -2732,95 +2754,10 @@ def run_text_analysis_mode(client, folder, txt_file):
         }
         selected_engine = _engine_map.get(tts_engine_choice, "clova")
 
-        summary_col1, summary_col2, summary_col3, summary_col4 = st.columns(4)
-        summary_col1.metric("엔진", tts_engine_choice)
-        summary_col2.metric("화자 구성", "다수 화자" if speaker_mode.startswith("다수") else "단일 화자")
-        summary_col3.metric("연령대", age_category.split(" ")[0])
-        summary_col4.metric("음성 속도", f"{voice_speed}x")
-
-        st.caption("⬆️ 음성 옵션을 바꾸려면 Step 1.5의 '🔊 캐릭터 음성 미리듣기 & 음성 옵션' 섹션으로 돌아가세요.")
-
-        st.write("") # 간격
         # ------------------------------------------------------------------
-        # 생성 전 프롬프트 & 데이터 매핑 미리보기 (Preview)
+        # [자동 트리거] Step 3에서 "TTS 생성하기"를 누르면 플래그가 켜져 있음
         # ------------------------------------------------------------------
-        st.markdown("#### 👁️ 생성 데이터 미리보기")
-        with st.expander("🔍 화자 및 스타일 프롬프트 구성 확인하기 (클릭)", expanded=False):
-            # 1. 데이터 준비
-            preview_scripts = st.session_state.get("step1_scripts", [])
-            char_info_p = st.session_state.get("track_b_characters", {})
-            chars_data_p = char_info_p.get("characters", [])
-            dial_map_p = char_info_p.get("dialogue_map", [])
-
-            # 매핑 테이블 (Tone용)
-            char_tone_map_p = {c['id']: c.get('tone', '') for c in chars_data_p}
-
-            preview_data = []
-
-            for idx, script in enumerate(preview_scripts):
-                text = script["text"]
-                raw_speaker = script["speaker"] # "char_01 (흥부)..."
-                page_num = int(script.get("source_page", 0)) # 대본의 페이지 번호
-                
-                # ID 추출
-                speaker_id = raw_speaker.split(" ")[0] if raw_speaker else "narrator"
-                
-                # API Input용 화자 결정
-                final_api_speaker = speaker_id
-                if speaker_mode == "단일 화자 (Narrator Only)":
-                    final_api_speaker = "narrator (Override)"
-
-                generated_prompt = ""
-                
-                if "narrator" in speaker_id.lower():
-                    generated_prompt = "(기본 나레이션 톤) Calm and clear storytelling."
-                else:
-                    c_tone = char_tone_map_p.get(speaker_id, "Normal tone")
-                    
-                    # 구조적 검색 함수 호출 (화자, 페이지, 텍스트 모두 넘김)
-                    c_ctx = find_context_by_structure(text, raw_speaker, page_num, dial_map_p)
-                    
-                    if c_ctx:
-                        generated_prompt = f"Tone: {c_tone} / Situation: {c_ctx}"
-                    else:
-                        generated_prompt = f"Tone: {c_tone} (Context Not Found)"
-
-                preview_data.append({
-                    "No": idx + 1,
-                    "화자 (API Input)": final_api_speaker,
-                    "원본 ID": speaker_id,
-                    "대사 내용 (Text)": text,
-                    "생성된 프롬프트 (Style Prompt)": generated_prompt
-                })
-
-            # 2. DataFrame으로 표시
-            if preview_data:
-                st.dataframe(
-                    preview_data,
-                    column_config={
-                        "No": st.column_config.NumberColumn(width="small"),
-                        "화자 (API Input)": st.column_config.TextColumn(width="medium"),
-                        "원본 ID": st.column_config.TextColumn(width="small"),
-                        "대사 내용 (Text)": st.column_config.TextColumn(width="large"),
-                        "생성된 프롬프트 (Style Prompt)": st.column_config.TextColumn(
-                            "AI에게 전달될 지시문 (Prompt)", 
-                            width="large",
-                            help="이 내용이 Gemini/GPT에게 전달되어 연기 톤을 결정합니다."
-                        ),
-                    },
-                    use_container_width=True,
-                    hide_index=True
-                )
-            else:
-                st.warning("표시할 대본 데이터가 없습니다.")
-
-        st.write("") # 여백
-        
-        # ... (이 밑에 기존 'btn_label =' 및 'if st.button...' 코드가 이어집니다) ...
-        # 버튼 라벨: "대본 v2 기반 음성 v3 생성"
-        btn_label = f"🎙️ 음성 생성하기 (Script v{current_script_ver} ➔ Audio v{next_audio_ver})"
-        
-        if st.button(btn_label, type="primary"):
+        if st.session_state.pop("auto_run_tts", False):
             final_scripts = st.session_state.get("step1_scripts", [])
             
             if not final_scripts:
@@ -2862,16 +2799,23 @@ def run_text_analysis_mode(client, folder, txt_file):
 
                         # 3. 스크립트 순회하며 프롬프트 리스트 생성
                         style_prompts_list = []
-                        
-                        # 화자 정보 보정을 위한 임시 리스트
-                        processed_speakers = [] 
 
-                        for script in final_scripts:
+                        # 화자 정보 보정을 위한 임시 리스트
+                        processed_speakers = []
+
+                        for _idx_p, script in enumerate(final_scripts):
                             text = script["text"]
                             # speaker 필드에 이름이 섞여있을 수 있으므로 ID만 추출 (예: "char_01 (흥부)..." -> "char_01")
                             raw_speaker = script["speaker"]
                             speaker_id = raw_speaker.split(" ")[0] if raw_speaker else "narrator"
-                            
+
+                            # 사용자가 Step 1.5에서 편집한 AI 지시문이 있으면 그것 우선 사용
+                            user_edited_prompt = st.session_state.get(f"user_prompt_{_idx_p}")
+                            if user_edited_prompt and user_edited_prompt.strip():
+                                style_prompts_list.append(user_edited_prompt.strip())
+                                processed_speakers.append(speaker_id)
+                                continue
+
                             # (A) 나레이터 처리
                             if "narrator" in speaker_id.lower() or speaker_id == "narrator":
                                 if speaker_mode == "단일 화자 (Narrator Only)":
