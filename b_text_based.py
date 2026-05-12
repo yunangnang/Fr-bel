@@ -2163,7 +2163,15 @@ def run_text_analysis_mode(client, folder, txt_file):
             # ====================================================
             # 👁️ 생성 데이터 미리보기 (Step 4에서 이동, 편집 가능)
             # ====================================================
-            preview_scripts = st.session_state.get("step1_scripts", [])
+            # 우선순위: 1) step1_scripts (TTS 생성 직전 확정본)
+            #         2) script_results[mode].subtitles (Step 3에서 GPT가 작성한 최신 대본)
+            preview_scripts = st.session_state.get("step1_scripts") or []
+            if not preview_scripts:
+                _mode_p = st.session_state.get("script_style_mode")
+                _script_results_p = st.session_state.get("script_results", {})
+                if _mode_p and _mode_p in _script_results_p:
+                    preview_scripts = _script_results_p[_mode_p].get("subtitles", []) or []
+
             if preview_scripts:
                 st.markdown("#### 👁️ 생성 데이터 미리보기 (장면별 AI 지시문)")
                 st.caption("각 장면이 어떤 톤으로 읽힐지 미리 확인하고, **AI 지시문**을 직접 수정할 수 있습니다.")
