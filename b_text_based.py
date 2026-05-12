@@ -1848,15 +1848,7 @@ def run_text_analysis_mode(client, folder, txt_file):
         st.session_state.track_b_analysis = None
 
     analysis_file = paths["analysis"]
-
-    # 2. 저장된 파일이 있다면 자동으로 불러오기 (세션이 비어있을 때만)
-    if st.session_state.track_b_analysis is None and analysis_file.exists():
-        try:
-            with open(analysis_file, "r", encoding="utf-8") as f:
-                st.session_state.track_b_analysis = json.load(f)
-            st.toast("📂 저장된 분석 결과를 불러왔습니다.", icon="✅")
-        except Exception as e:
-            st.error(f"파일 로드 중 오류: {e}")
+    # 자동 불러오기 제거: 세션별 폴더라 매 세션이 깨끗이 시작되어야 함
 
     # 3. 분석 버튼 상태 결정 
     if st.session_state.track_b_analysis is None:
@@ -1948,17 +1940,9 @@ def run_text_analysis_mode(client, folder, txt_file):
         # 1. 파일 경로 설정
         char_file = paths["characters"]
 
-        # 2. 세션 초기화 & 자동 불러오기
+        # 2. 세션 초기화 (자동 불러오기 제거 - 세션별 폴더라 불필요)
         if "track_b_characters" not in st.session_state:
-            if char_file.exists():
-                try:
-                    with open(char_file, "r", encoding="utf-8") as f:
-                        st.session_state.track_b_characters = json.load(f)
-                    st.toast("📂 저장된 캐릭터 분석 정보를 불러왔습니다.", icon="✅")
-                except:
-                    st.session_state.track_b_characters = None
-            else:
-                st.session_state.track_b_characters = None
+            st.session_state.track_b_characters = None
 
         # 3. 분석 버튼 상태 결정
         if st.session_state.track_b_characters is None:
@@ -2161,19 +2145,9 @@ def run_text_analysis_mode(client, folder, txt_file):
         st.info("🎞️ 전체 이야기 중, 예고편으로 만들었을 때 가장 흥미진진한 부분을 선택하세요.")
         segments_file =  paths["segments"]
         
-        # 세션 초기화 & 자동 불러오기
+        # 세션 초기화 (자동 불러오기 제거 - 세션별 폴더라 불필요)
         if "track_b_segments" not in st.session_state:
-            # 저장된 파일이 있는지 확인
-            if segments_file.exists():
-                try:
-                    with open(segments_file, "r", encoding="utf-8") as f:
-                        data = json.load(f)
-                        st.session_state.track_b_segments = data.get("options", [])
-                    st.toast("📂 저장된 추천 구간을 불러왔습니다.", icon="✅")
-                except:
-                    st.session_state.track_b_segments = None
-            else:
-                st.session_state.track_b_segments = None
+            st.session_state.track_b_segments = None
 
         if "selected_segment_index" not in st.session_state:
             st.session_state.selected_segment_index = 0 
