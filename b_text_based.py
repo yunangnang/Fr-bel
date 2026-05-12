@@ -3081,7 +3081,7 @@ def run_text_analysis_mode(client, folder, txt_file):
     if st.session_state.get("track_b_step", 0) >= 6:        
         # [DEBUG] Source Page 값 확인 (필요시 주석 처리)
         if "step1_scripts" in st.session_state:
-            with st.expander("🐛 [DEBUG] Step 3에서 넘어온 Source Page 값"):
+            with st.expander("🐛 개발용 [DEBUG]"):
                 debug_data = [{
                     "Scene": i+1, 
                     "Source Page": item.get("source_page", "MISSING"),
@@ -3431,7 +3431,7 @@ def run_text_analysis_mode(client, folder, txt_file):
             with col_prev_opt:
                 use_bgm = st.checkbox("🎵 배경음악(BGM) 포함하기", value=False, key="step6_5_use_bgm")
                 bgm_volume = 0.15
-                
+
                 if use_bgm:
                     if BGM_DIR.exists():
                         bgm_files = sorted(
@@ -3455,6 +3455,11 @@ def run_text_analysis_mode(client, folder, txt_file):
                 index=0,
                 horizontal=True
             )
+
+            # Step 8에서도 그대로 사용하도록 공유 키에 저장
+            st.session_state["bgm_use_shared"] = use_bgm
+            st.session_state["bgm_volume_shared"] = bgm_volume
+            st.session_state["subtitle_mode_shared"] = subtitle_mode
             # ---------------------------------------------------------
             # 3. 프리뷰 생성 로직
             # ---------------------------------------------------------
@@ -4143,62 +4148,34 @@ def run_text_analysis_mode(client, folder, txt_file):
 
 
             # =======================================
-            # 🎵 BGM 설정 섹션
+            # BGM 경로 설정 (UI 없이 내부 계산만 - 옵션은 Step 6.5에서 설정)
             # =======================================
-            st.markdown("---")
-            st.markdown("#### 🎵 배경음악(BGM) 설정")
-
-            # ---------------------------------------------------------
-            # [BGM 경로 설정] OR 로직 적용 (우선순위 체크)
-            # ---------------------------------------------------------
             story_dir_name = txt_file.stem
-
-            # 후보 1: 파일명 그대로 사용 (Step 6.5 방식)
             path_candidate_1 = Path("BGM") / story_dir_name
-
-            # 후보 2: 변환 함수 사용 (Step 8 방식)
-            # (주의: get_bgm_folder_name 함수가 코드 상단에 정의되어 있어야 합니다)
             path_candidate_2 = Path("BGM") / get_bgm_folder_name(story_dir_name)
 
-            # [로직] 1번이 있으면 1번, 없으면 2번, 둘 다 없으면 1번을 기본값으로
             if path_candidate_1.exists() and path_candidate_1.is_dir():
                 BGM_DIR = path_candidate_1
-                st.caption(f"BGM 경로 확인됨 (Type A): {BGM_DIR}")
             elif path_candidate_2.exists() and path_candidate_2.is_dir():
                 BGM_DIR = path_candidate_2
-                st.caption(f"BGM 경로 확인됨 (Type B): {BGM_DIR}")
             else:
-                BGM_DIR = path_candidate_1  # 폴더가 없을 경우 기본값
+                BGM_DIR = path_candidate_1
 
-            use_bgm = st.checkbox("배경음악 사용 (페이지별 자동 매칭)", value=False, key="step8_use_bgm")
-            bgm_volume = 0.15
+            # Step 6.5에서 설정한 값 사용
+            use_bgm = st.session_state.get("bgm_use_shared", False)
+            bgm_volume = st.session_state.get("bgm_volume_shared", 0.15)
+            subtitle_mode_final = st.session_state.get("subtitle_mode_shared", "🏳️ 기본 (흰색 통일)")
 
-            if use_bgm:
-                if BGM_DIR.exists():
-                    bgm_files = sorted([f.name for f in BGM_DIR.iterdir() if f.suffix.lower() in ['.wav', '.mp3', '.m4a']])
-                    if bgm_files:
-                        bgm_volume = st.slider("BGM 볼륨 (%):", 5, 100, 15, key="step8_bgm_volume") / 100.0
-                        st.info(f" BGM 폴더 발견: {len(bgm_files)}개 파일")
-                        st.caption("각 페이지 번호에 맞는 BGM이 자동으로 선택됩니다.")
-                    else:
-                        st.warning(f"BGM 폴더에 오디오 파일이 없습니다: {BGM_DIR}")
-                        use_bgm = False
-                else:
-                    st.warning(f"BGM 폴더가 없습니다: {BGM_DIR}")
-                    use_bgm = False
+            # 폴더가 실제로 없으면 BGM 강제 비활성화
+            if use_bgm and not (BGM_DIR.exists() and any(
+                f.suffix.lower() in ['.wav', '.mp3', '.m4a'] for f in BGM_DIR.iterdir()
+            )):
+                use_bgm = False
 
-            st.markdown("---")
-            
-            # ---------------------------------------------------------
-            # [UI] 자막 스타일 선택
-            # ---------------------------------------------------------
-            st.write(" **자막 스타일 설정**")
-            subtitle_mode_final = st.radio(
-                "최종 영상 자막 색상:",
-                ["🏳️ 기본 (흰색 통일)", "🌈 캐릭터별 자동 컬러링"],
-                index=0,
-                horizontal=True,
-                key="step8_sub_mode"
+            st.caption(
+                f"🎵 BGM: {'ON ('+str(int(bgm_volume*100))+'%)' if use_bgm else 'OFF'} · "
+                f"🎨 자막: {subtitle_mode_final} · "
+                "변경은 ⬆ Step 6.5에서"
             )
 
             st.markdown("---")
