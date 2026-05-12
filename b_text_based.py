@@ -1841,7 +1841,7 @@ def run_text_analysis_mode(client, folder, txt_file):
     # -----------------------------------------
     # [Step 1] 동화 내용 분석
     # -----------------------------------------
-    st.subheader("Step 1. 동화 내용 분석 및 구조화")
+    st.subheader("📚 동화 내용 분석")
 
     # 1. 초기 세션 상태 및 파일 경로 설정
     if "track_b_analysis" not in st.session_state:
@@ -1924,7 +1924,7 @@ def run_text_analysis_mode(client, folder, txt_file):
         col_msg, col_btn = st.columns([3, 1])
         with col_msg: st.caption("위 분석 내용이 맞다면 다음 단계로 넘어가세요.")
         with col_btn:
-            if st.button("➡️ Step 1.5: 등장인물 분석"):
+            if st.button("➡️ 다음: 등장인물 분석"):
                 st.session_state.track_b_step = 2
                 st.rerun()
 
@@ -1934,7 +1934,7 @@ def run_text_analysis_mode(client, folder, txt_file):
     # Step 1 분석이 완료되었거나, 사용자가 수동으로 1.5단계를 열었을 때
     if st.session_state.get("track_b_analysis") and st.session_state.get("track_b_step", 0) >= 1:
         st.divider()
-        st.subheader("Step 1.5. 등장인물 분석")
+        st.subheader("🎭 등장인물 분석")
 
         # 1. 파일 경로 설정
         char_file = paths["characters"]
@@ -2029,7 +2029,7 @@ def run_text_analysis_mode(client, folder, txt_file):
             # --------------------------------
             st.divider()
             st.markdown("#### 🔊 캐릭터 음성 미리듣기 & 음성 옵션")
-            st.caption("여기서 설정한 엔진·화자 구성·속도가 Step 4 TTS 생성에 그대로 사용됩니다.")
+            st.caption("여기서 설정한 엔진·화자 구성·속도가 TTS 음성 생성에 그대로 사용됩니다.")
 
             # ---- 엔진 선택 (Step 4와 session_state로 공유) ----
             ENGINE_OPTIONS = ["Naver Clova", "GPT-4o Mini TTS", "Gemini 2.5 Flash TTS", "Gemini 2.5 Pro TTS"]
@@ -2237,7 +2237,7 @@ def run_text_analysis_mode(client, folder, txt_file):
                     _i = int(_row["No"]) - 1
                     st.session_state[f"user_prompt_{_i}"] = _row["AI 지시문 (편집 가능)"]
             else:
-                st.caption("💡 Step 3에서 대본이 작성되면, 여기서 장면별 AI 지시문을 미리 확인·편집할 수 있습니다.")
+                st.caption("💡 대본 작성이 끝나면, 여기서 장면별 AI 지시문을 미리 확인·편집할 수 있습니다.")
 
             st.markdown("#### 💬 대사 분석 결과 (화자 & 페이지)")
             st.caption("각 대사가 **누구의 말**이며 **몇 페이지**에 나오는지 확인하세요.")
@@ -2261,7 +2261,7 @@ def run_text_analysis_mode(client, folder, txt_file):
             with col_c1:
                 st.caption("캐릭터 정보를 확정하고 저장합니다.")
             with col_c2:
-                if st.button("✅ 캐릭터 확정 (Step 2 이동)"):
+                if st.button("✅ 캐릭터 확정 후 다음 단계"):
                     # 캐릭터 정보 저장
                     st.session_state.track_b_characters["characters"] = edited_chars
                     with open(char_file, "w", encoding="utf-8") as f:
@@ -2280,7 +2280,7 @@ def run_text_analysis_mode(client, folder, txt_file):
     # =========================================================
     if st.session_state.get("track_b_step", 0) >= 2:
         st.divider()
-        st.subheader("Step 2. 예고편 구간(Highlight) 선택")
+        st.subheader("✂️ 예고편 구간 선택")
         st.info("🎞️ 전체 이야기 중, 예고편으로 만들었을 때 가장 흥미진진한 부분을 선택하세요.")
         segments_file =  paths["segments"]
         
@@ -2301,7 +2301,7 @@ def run_text_analysis_mode(client, folder, txt_file):
 
         if st.button(btn_label, type=btn_type):
             if not st.session_state.track_b_analysis:
-                st.error("Step 1 분석을 먼저 완료해주세요.")
+                st.error("동화 내용 분석을 먼저 완료해주세요.")
             else:
                 with st.spinner("GPT가 텍스트를 훑으며 가장 쫄깃한 구간을 찾고 있습니다..."):
                     try:
@@ -2357,14 +2357,14 @@ def run_text_analysis_mode(client, folder, txt_file):
             with col_msg_2:
                 st.caption("이 구간으로 확정하고 대본을 작성하시겠습니까?")
             with col_btn_2:
-                if st.button("✅ 구간 확정 (Step 3 대본작성)"):
+                if st.button("✅ 구간 확정 후 대본 작성"):
                     st.session_state.track_b_step = 3
                     log_event("modeB_step2_segment_chosen", {
                         "segment": selected_data,
                     })
                     # 다음 단계에서 쓸 텍스트를 세션에 저장해둡니다.
                     st.session_state.target_trailer_text = selected_data['target_text']
-                    st.toast("Step 3: 대본 작성 단계로 이동합니다.")
+                    st.toast("대본 작성 단계로 이동합니다.")
                     st.rerun()
 
     # =========================================================
@@ -2372,7 +2372,7 @@ def run_text_analysis_mode(client, folder, txt_file):
     # =========================================================
     if st.session_state.get("track_b_step", 0) >= 3:
         st.divider()
-        st.subheader("Step 3. 맞춤형 예고편 대본 작성")
+        st.subheader("📝 예고편 대본 작성")
         st.info("🎙️ 주인공 소개부터 위기까지, 한 편의 영화 예고편처럼 이야기를 재구성합니다.")
 
         # 1. 월령 정보 및 기본 설정
@@ -2517,7 +2517,7 @@ def run_text_analysis_mode(client, folder, txt_file):
 
         if st.button(btn_label, type="primary", help=help_msg):
             if not target_text:
-                st.error("Step 2에서 구간을 먼저 선택해주세요.")
+                st.error("예고편 구간을 먼저 선택해주세요.")
             else:
                 # 스포일러 방지 및 데이터 준비 (공통)
                 page_map = st.session_state.get("page_map", {})
@@ -2692,7 +2692,7 @@ def run_text_analysis_mode(client, folder, txt_file):
         # 2. 경로 설정
         story_dir_name = txt_file.stem
         # outputs / 동화이름 / tts / 모드명
-        TTS_MODE_BASE_DIR = Path("outputs") / story_dir_name / "tts" / current_mode
+        TTS_MODE_BASE_DIR = _session_root / story_dir_name / "tts" / current_mode
         TTS_MODE_BASE_DIR.mkdir(parents=True, exist_ok=True)
 
         # ------------------------------------------------------------------
@@ -2997,13 +2997,7 @@ def run_text_analysis_mode(client, folder, txt_file):
             except:
                 pass
 
-            st.markdown(f"### 🎧 오디오 확인 (S{cur_s} / A{cur_a}) - {current_engine_display}")
-            
-            # 폴더 경로 표시 (디버깅용)
-            current_path_display = st.session_state.get(f"loaded_tts_dir_{current_mode}", "New")
-            # 전체 경로 대신 폴더명만 깔끔하게 표시
-            display_short_path = Path(current_path_display).name if current_path_display != "New" else "New"
-            st.caption(f"📁 저장 위치: .../{current_mode}/{display_short_path}")
+            st.markdown("### 🎧 생성된 음성 듣기")
 
             # 1. 전체 듣기 (Full Audio)
             if current_full_audio and os.path.exists(current_full_audio):
@@ -3015,7 +3009,7 @@ def run_text_analysis_mode(client, folder, txt_file):
                 st.warning("⚠️ 전체 통합 오디오 파일이 없습니다.")
 
             # 2. 개별 듣기 (Segments)
-            with st.expander(f"📂 문장별 상세 듣기 (S{cur_s}/A{cur_a})"):
+            with st.expander("📂 문장별 상세 듣기"):
                 for i, item in enumerate(current_audio_data):
                     col_text, col_audio = st.columns([2, 1])
                     
@@ -3042,7 +3036,7 @@ def run_text_analysis_mode(client, folder, txt_file):
             with col_msg:
                 st.caption(f"현재 선택된 **Script v{cur_s} / Audio v{cur_a}** 음성을 확정하고 이미지 매칭 단계로 이동합니다.")
             with col_btn:
-                if st.button("✅ 음성 확정 (Step 6 이동)"):
+                if st.button("✅ 음성 확정 후 이미지 매칭"):
                     # 1. 이미지 폴더 및 TXT 검증
                     if not folder.exists():
                         st.error("이미지 폴더 경로가 잘못되었습니다.")
@@ -3073,7 +3067,7 @@ def run_text_analysis_mode(client, folder, txt_file):
                             
                             # 단계 이동
                             st.session_state.track_b_step = 6
-                            st.toast(f"Audio v{cur_a} 확정! Step 6로 이동합니다.")
+                            st.toast("이미지 매칭 단계로 이동합니다.")
                             st.rerun()
     # =========================================================
     # [Step 6] 이미지 자동 매칭 (대본 출처 기반 + 스마트 분배)
@@ -3089,7 +3083,7 @@ def run_text_analysis_mode(client, folder, txt_file):
                 } for i, item in enumerate(st.session_state.step1_scripts)]
                 st.dataframe(debug_data)
 
-        st.info("⚡ Step 3의 페이지 정보를 바탕으로, 즉시 이미지를 배정합니다. (펼침면 및 중복 방지 규칙 자동 적용)")
+        st.info("⚡ 대본의 페이지 정보를 바탕으로 이미지를 즉시 배정합니다. (펼침면 및 중복 방지 규칙 자동 적용)")
 
         if "track_b_matches" not in st.session_state:
             st.session_state.track_b_matches = None
@@ -3306,7 +3300,7 @@ def run_text_analysis_mode(client, folder, txt_file):
             with col_msg:
                 st.caption(f"총 {len(selected_filenames)}개의 장면으로 영상을 생성합니다.")
             with col_btn:
-                if st.button("최종 확정 (Step 7 영상 생성)"):
+                if st.button("최종 확정 후 영상 생성"):
                     st.session_state.selected_pages = selected_filenames
                     st.session_state.track_b_step = 7
                     log_event("modeB_step6_images_finalized", {
@@ -3325,7 +3319,7 @@ def run_text_analysis_mode(client, folder, txt_file):
         # =========================================================
         if st.session_state.get("track_b_step", 0) >= 7:
             st.divider()
-            st.subheader("Step 6.5. (선택) 정지 화상 프리뷰 (Animatic)")
+            st.subheader("🎬 (선택) 정지 화상 프리뷰")
             st.info("🎞️ Runway 영상을 생성하기 전, [이미지 + TTS + 자막 + BGM]의 흐름을 미리 확인해보세요.")
             
             # ---------------------------------------------------------
@@ -3337,7 +3331,7 @@ def run_text_analysis_mode(client, folder, txt_file):
 
             story_dir_name = txt_file.stem
             # outputs / 동화이름 / preview / 모드명
-            PREVIEW_BASE_DIR = Path("outputs") / story_dir_name / "preview" / cur_mode
+            PREVIEW_BASE_DIR = _session_root / story_dir_name / "preview" / cur_mode
             PREVIEW_BASE_DIR.mkdir(parents=True, exist_ok=True)
 
             # BGM 경로 설정 (기존 로직 유지)
@@ -3451,7 +3445,7 @@ def run_text_analysis_mode(client, folder, txt_file):
             st.write("🎨 **자막 스타일 설정**")
             subtitle_mode = st.radio(
                 "자막 색상 방식을 선택하세요:",
-                ["🏳️ 기본 (흰색 통일)", "🌈 캐릭터별 자동 컬러링 (화자 구분)"],
+                ["🏳️ 기본 (흰색 통일)", "🌈 캐릭터별 자동 컬러링"],
                 index=0,
                 horizontal=True
             )
@@ -3494,7 +3488,7 @@ def run_text_analysis_mode(client, folder, txt_file):
                     st.caption(f"🎨 적용된 색상 팔레트: {len(speaker_color_map)}명의 화자 구분됨")
 
                 if not matches or not audios:
-                    st.error("데이터가 부족합니다. Step 4, 6을 확인해주세요.")
+                    st.error("데이터가 부족합니다. TTS 음성 생성과 이미지 매칭을 확인해주세요.")
                 else:
                     # 2. 폴더 생성: v{S}_{A}_{P}
                     folder_name = f"v{cur_script_ver}_{cur_audio_ver}_{next_prev_ver}"
@@ -3660,13 +3654,13 @@ def run_text_analysis_mode(client, folder, txt_file):
             
             st.markdown(f"#### 📺 프리뷰 확인 ({ver_label})")
             st.video(st.session_state.track_b_preview_video)
-            st.info("👆 위 영상은 '이미지+TTS+자막' 확인용입니다. 실제 영상(Runway) 생성은 아래 'Step 7'에서 진행하세요.")
+            st.info("👆 위 영상은 '이미지+TTS+자막' 확인용입니다. 실제 영상 생성은 아래 '영상 생성' 단계에서 진행하세요.")
 
         # =========================================================
         # 추후 코드 완성 시 삭제 예정
         # =========================================================
         st.divider()
-        st.subheader("Step 7. Runway 영상 생성 및 풀버전 병합")
+        st.subheader("🎞 영상 생성")
         st.info("🎥 AI 영상 생성 후, [무음 풀버전]과 [TTS 포함 풀버전]을 자동으로 제작합니다.")
         
         # 0. 데이터 준비
@@ -3686,13 +3680,13 @@ def run_text_analysis_mode(client, folder, txt_file):
 
         # 데이터 검증
         if not st.session_state.track_b_matches:
-            st.error("Step 6에서 이미지 매칭을 완료해주세요.")
+            st.error("이미지 매칭을 완료해주세요.")
         elif not st.session_state.track_b_audio:
-            st.error("Step 4에서 TTS 생성을 완료해주세요.")
+            st.error("TTS 음성 생성을 완료해주세요.")
         else:
-            # 기본 경로 설정: outputs/동화이름/video/모드명
+            # 기본 경로 설정: 사용자 세션 폴더 안 동화이름/video/모드명
             story_dir_name = txt_file.stem
-            VIDEO_BASE_DIR = Path("outputs") / story_dir_name / "video" / cur_mode
+            VIDEO_BASE_DIR = _session_root / story_dir_name / "video" / cur_mode
             VIDEO_BASE_DIR.mkdir(parents=True, exist_ok=True)
 
             # ------------------------------------------------------------------
@@ -4035,9 +4029,9 @@ def run_text_analysis_mode(client, folder, txt_file):
                 st.divider()
                 col_m, col_b = st.columns([3, 1])
                 with col_m:
-                    st.caption("영상 소스가 준비되었습니다. 오디오 합성 및 자막 작업(Step 8)으로 이동하시겠습니까?")
+                    st.caption("영상 소스가 준비되었습니다. 오디오 합성 및 자막 작업으로 이동하시겠습니까?")
                 with col_b:
-                    if st.button(" Step 8 이동 (최종작업)"):
+                    if st.button(" 최종 작업으로 이동"):
                         story_dir_name = txt_file.stem
                         st.session_state.track_b_output_dirs = {
                             "root": str(_session_root / story_dir_name),
@@ -4050,7 +4044,7 @@ def run_text_analysis_mode(client, folder, txt_file):
                         st.session_state.current_script_ver = cur_script_ver
                         st.session_state.current_audio_ver  = cur_audio_ver
                         st.session_state.current_video_ver  = next_video_ver
-                        st.toast("Step 8: 자막 및 최종 편집 단계로 이동합니다.")
+                        st.toast("최종 편집 단계로 이동합니다.")
                         st.rerun()
 
     # =========================================================
@@ -4058,7 +4052,7 @@ def run_text_analysis_mode(client, folder, txt_file):
     # =========================================================
     if st.session_state.get("track_b_step", 0) >= 8:
         st.divider()
-        st.subheader("Step 8. 최종 영상 완성 (오디오 + 자막)")
+        st.subheader("✨ 최종 영상 완성")
         st.info(" 개별 영상에 TTS 음성과 자막을 입힌 뒤, 최종 결과물로 합칩니다.")
 
         # 0. 필요한 데이터 확인
@@ -4076,7 +4070,7 @@ def run_text_analysis_mode(client, folder, txt_file):
         current_mode = st.session_state.get("script_style_mode", "Standard")
 
         if not video_results or not audios or not scripts:
-            st.error("이전 단계의 데이터(영상, 오디오, 대본)가 부족합니다. Step 7을 먼저 완료해주세요.")
+            st.error("이전 단계의 데이터(영상, 오디오, 대본)가 부족합니다. 영상 생성을 먼저 완료해주세요.")
         else:
             # ------------------------------------------------------------------
             # [버전 추적] 현재 작업 중인 S/A/V 버전 파악
@@ -4103,7 +4097,7 @@ def run_text_analysis_mode(client, folder, txt_file):
 
             # 기본 경로: outputs/동화명/final/모드명
             story_dir_name = txt_file.stem
-            FINAL_BASE_DIR = Path("outputs") / story_dir_name / "final" / current_mode
+            FINAL_BASE_DIR = _session_root / story_dir_name / "final" / current_mode
             FINAL_BASE_DIR.mkdir(parents=True, exist_ok=True)
 
             # ------------------------------------------------------------------
@@ -4175,7 +4169,7 @@ def run_text_analysis_mode(client, folder, txt_file):
             st.caption(
                 f"🎵 BGM: {'ON ('+str(int(bgm_volume*100))+'%)' if use_bgm else 'OFF'} · "
                 f"🎨 자막: {subtitle_mode_final} · "
-                "변경은 ⬆ Step 6.5에서"
+                "변경은 ⬆ '정지 화상 프리뷰' 단계에서"
             )
 
             st.markdown("---")
