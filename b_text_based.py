@@ -406,6 +406,57 @@ GPT_VOICE_TO_UI_LABEL = {
     "narrator": "👩 성인 여성 (지윤 - 나레이션)"
 }
 
+# 3. VOICE_SAMPLE_TEXTS (각 음성의 성격이 드러나는 미리듣기 문장)
+VOICE_SAMPLE_TEXTS = {
+    "👦 아동 남성 (하준)": "엄마! 저 학교 다녀왔어요!",
+    "👦 아동 남성 (재욱)": "와! 이거 진짜 재밌어요!",
+    "👧 아동 여성 (다인)": "어, 이게 뭐지? 너무 신기해!",
+    "👧 아동 여성 (가람 - 밝음)": "오늘은 정말 즐거운 하루였어요!",
+    "👱 청년 남성 (은우)": "걱정하지 마. 내가 도와줄게.",
+    "👱 청년 남성 (지훈)": "그래, 우리 함께 가보자!",
+    "👩 청년 여성 (아라)": "정말요? 너무 좋아요!",
+    "👩 청년 여성 (유진)": "이쪽으로 따라오세요.",
+    "👨 성인 남성 (민상 - 뉴스톤)": "오늘의 주요 소식을 전해드립니다.",
+    "👨 성인 남성 (준영 - 부드러움)": "괜찮아, 모든 게 다 잘 될 거야.",
+    "👨 성인 남성 (원탁 - 굵고 낮음)": "이 숲은 위험하다. 조심해야 한다.",
+    "👩 성인 여성 (예진 - 차분함)": "천천히 생각해보고 결정하렴.",
+    "👩 성인 여성 (영미 - 따뜻함)": "우리 아가, 이리 와서 안아줄까?",
+    "👩 성인 여성 (지윤 - 나레이션)": "옛날 옛적, 어느 마을에 한 아이가 살았어요.",
+    "👴 어르신 남성 (종현)": "허허, 그래. 옛날에는 말이다.",
+    "👵 어르신 여성 (선희)": "에구, 우리 강아지. 잘 다녀왔니?",
+    "🐱 고양이/동물 (야옹이)": "야옹~ 배고프다옹!",
+    "🐶 강아지 (멍멍이)": "멍멍! 같이 놀자!",
+    "😈 악마/괴물 (마몬)": "크크크. 어디 한번 도망쳐 봐라!",
+    "🤖 로봇/기계 (원탁)": "삐빅. 명령을 수행합니다.",
+    "🧚 요정 (신우 - 중성적)": "두려워하지 마. 내가 함께 있을게.",
+}
+
+
+def generate_voice_preview(voice_label: str) -> "Optional[str]":
+    """선택한 음성으로 샘플 문장을 Clova TTS로 생성. 캐시된 파일이 있으면 재사용."""
+    from tts_module import text_to_speech
+
+    clova_id = VOICE_PRESETS.get(voice_label)
+    sample_text = VOICE_SAMPLE_TEXTS.get(voice_label)
+    if not clova_id or not sample_text:
+        return None
+
+    sample_dir = Path("outputs/voice_samples")
+    sample_dir.mkdir(parents=True, exist_ok=True)
+    output_path = sample_dir / f"sample_{clova_id}.mp3"
+
+    if output_path.exists() and output_path.stat().st_size > 0:
+        return str(output_path)
+
+    success = text_to_speech(
+        text=sample_text,
+        output_path=str(output_path),
+        speaker=clova_id,
+        engine="clova",
+    )
+    return str(output_path) if success and output_path.exists() else None
+
+
 # 2. VOICE_PRESETS (UI 표시용 -> 실제 Clova ID)
 # (이전 답변과 동일하게 유지)
 VOICE_PRESETS = {
@@ -1977,7 +2028,52 @@ def run_text_analysis_mode(client, folder, txt_file):
                 key="editor_chars_1_5"
             )
 
+            # --------------------------------
+            # 🔊 캐릭터별 음성 미리듣기
+            # --------------------------------
             st.divider()
+            st.markdown("#### 🔊 캐릭터 음성 미리듣기")
+            st.caption("배정된 목소리가 어떤 느낌인지 확인해보세요. 위 표에서 '지정 목소리'를 바꾸고 다시 듣기를 누르면 변경된 음성이 재생됩니다.")
+
+            if "voice_preview_cache" not in st.session_state:
+                st.session_state.voice_preview_cache = {}
+
+            for i, char in enumerate(edited_chars):
+                char_name = char.get("name") or f"캐릭터 {i+1}"
+                voice_label = char.get("voice_label", "--- 자동/기본값 ---")
+
+                preview_col_info, preview_col_btn = st.columns([4, 1])
+                with preview_col_info:
+                    st.markdown(f"**{char_name}**  ·  _{voice_label}_")
+                    sample = VOICE_SAMPLE_TEXTS.get(voice_label)
+                    if sample:
+                        st.caption(f"샘플 대사: \"{sample}\"")
+                with preview_col_btn:
+                    btn_key = f"voice_preview_btn_{i}"
+                    if st.button("🔊 듣기", key=btn_key, use_container_width=True):
+                        with st.spinner("음성 생성 중..."):
+                            audio_path = generate_voice_preview(voice_label)
+                            if audio_path:
+                                st.session_state.voice_preview_cache[i] = {
+                                    "path": audio_path,
+                                    "label": voice_label,
+                                }
+                            else:
+                                st.session_state.voice_preview_cache[i] = {
+                                    "path": None,
+                                    "label": voice_label,
+                                    "error": True,
+                                }
+
+                cache_entry = st.session_state.voice_preview_cache.get(i)
+                if cache_entry and cache_entry.get("label") == voice_label:
+                    if cache_entry.get("path") and os.path.exists(cache_entry["path"]):
+                        st.audio(cache_entry["path"])
+                    elif cache_entry.get("error"):
+                        st.warning("음성 생성에 실패했어요. Clova API 키 또는 음성 설정을 확인해주세요.")
+
+                st.divider()
+
             st.markdown("#### 💬 대사 분석 결과 (화자 & 페이지)")
             st.caption("각 대사가 **누구의 말**이며 **몇 페이지**에 나오는지 확인하세요.")
 
