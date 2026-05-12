@@ -1822,10 +1822,12 @@ def run_text_analysis_mode(client, folder, txt_file):
     st.divider()
 
 
-    # 저장 경로 설정 (text/tts.mp3/mp4)
+    # 저장 경로 설정 (사용자별 세션 폴더 안으로)
+    from session_logger import get_session_dir, log_event
+    _session_root = get_session_dir() or Path("outputs")
 
     story_dir_name = txt_file.stem
-    TEXT_OUT = Path("outputs") / story_dir_name / "TEXT"
+    TEXT_OUT = _session_root / story_dir_name / "TEXT"
     TEXT_OUT.mkdir(parents=True, exist_ok=True)
     # 파일명 안전하게 변환 (확장자 제외한 이름 사용)
     safe_name = Path(txt_file.name).stem
@@ -1874,7 +1876,12 @@ def run_text_analysis_mode(client, folder, txt_file):
                 # 파일 저장 및 세션 업데이트
                 with open(analysis_file, "w", encoding="utf-8") as f:
                     json.dump(result, f, ensure_ascii=False, indent=4)
-                
+
+                log_event("modeB_step1_analysis_done", {
+                    "book": story_dir_name,
+                    "result": result,
+                })
+
                 st.session_state.track_b_analysis = result
                 st.success("✅ 분석 및 저장 완료!")
                 st.rerun()
@@ -1984,7 +1991,12 @@ def run_text_analysis_mode(client, folder, txt_file):
                     # 3) 파일 저장
                     with open(char_file, "w", encoding="utf-8") as f:
                         json.dump(result_15, f, ensure_ascii=False, indent=4)
-                    
+
+                    log_event("modeB_step1_5_characters_assigned", {
+                        "characters": result_15.get("characters", []),
+                        "dialogue_count": len(result_15.get("dialogue_map", [])),
+                    })
+
                     st.session_state.track_b_characters = result_15
                     st.success("✅ 화자 분석 및 성우 캐스팅 완료!")
                     st.rerun()
@@ -2072,6 +2084,11 @@ def run_text_analysis_mode(client, folder, txt_file):
                 with preview_col_btn:
                     btn_key = f"voice_preview_btn_{i}"
                     if st.button("🔊 듣기", key=btn_key, use_container_width=True):
+                        log_event("modeB_voice_preview_clicked", {
+                            "character": char_name,
+                            "voice_label": voice_label,
+                            "engine": current_engine_key,
+                        })
                         with st.spinner("음성 생성 중..."):
                             audio_path = generate_voice_preview(voice_label, engine=current_engine_key)
                             if audio_path:
@@ -2126,7 +2143,12 @@ def run_text_analysis_mode(client, folder, txt_file):
                     st.session_state.track_b_characters["characters"] = edited_chars
                     with open(char_file, "w", encoding="utf-8") as f:
                         json.dump(st.session_state.track_b_characters, f, ensure_ascii=False, indent=4)
-                    
+
+                    log_event("modeB_step1_5_finalized", {
+                        "final_characters": edited_chars,
+                        "engine_choice": st.session_state.get("tts_engine_choice_shared"),
+                    })
+
                     st.session_state.track_b_step = 2
                     st.rerun()
 
@@ -2224,6 +2246,9 @@ def run_text_analysis_mode(client, folder, txt_file):
             with col_btn_2:
                 if st.button("✅ 구간 확정 (Step 3 대본작성)"):
                     st.session_state.track_b_step = 3
+                    log_event("modeB_step2_segment_chosen", {
+                        "segment": selected_data,
+                    })
                     # 다음 단계에서 쓸 텍스트를 세션에 저장해둡니다.
                     st.session_state.target_trailer_text = selected_data['target_text']
                     st.toast("Step 3: 대본 작성 단계로 이동합니다.")
@@ -2525,12 +2550,16 @@ def run_text_analysis_mode(client, folder, txt_file):
                     current_data["subtitles"] = edited_subtitles
                     st.session_state.script_results[script_style_mode] = current_data
                     st.session_state.step1_scripts = edited_subtitles # 다음 단계용
-                    
+
                     # 2. 현재 파일에 덮어쓰기 (새 버전 생성 X)
                     if current_file_path:
                         with open(current_file_path, "w", encoding="utf-8") as f:
                             json.dump(current_data, f, ensure_ascii=False, indent=4)
-                    
+
+                    log_event("modeB_step3_script_finalized", {
+                        "subtitles": edited_subtitles,
+                    })
+
                     st.session_state.track_b_step = 4
                     st.toast("대본이 확정되었습니다.")
                     st.rerun()
@@ -2667,6 +2696,11 @@ def run_text_analysis_mode(client, folder, txt_file):
                 index=_default_idx,
                 key="tts_engine_radio_step4",
             )
+            if st.session_state.tts_engine_choice_shared != tts_engine_choice:
+                log_event("modeB_step4_engine_changed", {
+                    "from": st.session_state.tts_engine_choice_shared,
+                    "to": tts_engine_choice,
+                })
             st.session_state.tts_engine_choice_shared = tts_engine_choice
             
             # 실제 함수에 넘길 engine string 변환
@@ -3346,6 +3380,9 @@ def run_text_analysis_mode(client, folder, txt_file):
                 if st.button("최종 확정 (Step 7 영상 생성)"):
                     st.session_state.selected_pages = selected_filenames
                     st.session_state.track_b_step = 7
+                    log_event("modeB_step6_images_finalized", {
+                        "selected_pages": selected_filenames,
+                    })
                     st.toast("이미지 확정! 영상 생성 단계로 넘어갑니다.")
                     st.rerun()
 
@@ -4069,9 +4106,12 @@ def run_text_analysis_mode(client, folder, txt_file):
                     if st.button(" Step 8 이동 (최종작업)"):
                         story_dir_name = txt_file.stem
                         st.session_state.track_b_output_dirs = {
-                            "root": str(Path("outputs") / story_dir_name),
+                            "root": str(_session_root / story_dir_name),
                             "full": str(st.session_state.track_b_full_visual)
                         }
+                        log_event("modeB_step7_runway_done", {
+                            "full_visual": str(st.session_state.track_b_full_visual),
+                        })
                         st.session_state.track_b_step = 8
                         st.session_state.current_script_ver = cur_script_ver
                         st.session_state.current_audio_ver  = cur_audio_ver

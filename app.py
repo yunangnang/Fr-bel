@@ -47,11 +47,39 @@ st.set_page_config(page_title="AI 숏츠 생성기", layout="wide")
 st.title(" 동화책 예고편 만들기 ")
 
 # --------------------------------
+# 사용자 식별 (워크숍 데이터 수집용)
+# --------------------------------
+from session_logger import init_session, log_event, render_sidebar_panel
+
+if "user_name" not in st.session_state:
+    st.session_state.user_name = ""
+if "session_id" not in st.session_state:
+    st.session_state.session_id = ""
+
+if not st.session_state.user_name:
+    st.info("👋 시작 전 이름을 입력해 주세요. 워크숍 데이터가 이 이름으로 저장됩니다.")
+    _name = st.text_input("이름:", placeholder="예: 김민지", key="user_name_input")
+    if st.button("✨ 시작하기", type="primary"):
+        if _name and _name.strip():
+            init_session(_name)
+            st.rerun()
+        else:
+            st.error("이름을 입력해 주세요.")
+    st.stop()
+
+# 사이드바: 사용자 정보 + 세션 다운로드 (모든 단계에서 노출)
+render_sidebar_panel()
+
+# --------------------------------
 # 기본 경로 설정
 # --------------------------------
 BASE_DIR = Path(__file__).resolve().parent
 CHARACTER_DIR = BASE_DIR / "character"
 TXT_DIR = CHARACTER_DIR / "txt" / "048"
+
+# 사용자별 출력 폴더 (모든 결과물이 여기로 저장됨)
+from session_logger import get_session_dir
+SESSION_DIR = get_session_dir() or Path("outputs")
 
 # --------------------------------
 # 🗂 Session State
@@ -77,11 +105,12 @@ if not book_folders:
 
 selected_book = st.selectbox("책 선택:", book_folders)
 
-# 책이 변경되면 이미지 목록 초기화
+# 책이 변경되면 이미지 목록 초기화 + 로깅
 if st.session_state.current_book != selected_book:
     st.session_state.current_book = selected_book
     st.session_state.loaded_images = []
     st.session_state.selected_pages = []
+    log_event("book_selected", {"book": selected_book})
 
 # 이미지 폴더와 txt 파일 자동 설정
 folder = CHARACTER_DIR / selected_book
@@ -136,6 +165,7 @@ if "current_mode" not in st.session_state:
 
 if st.session_state.current_mode != mode:
     st.session_state.current_mode = mode
+    log_event("mode_selected", {"mode": mode})
     # 여기에 모드 변경 시 초기화할 변수들 리셋 (예: loaded_images 등)
     st.session_state.selected_pages = []
     st.rerun()
@@ -166,6 +196,11 @@ if mode == "(기존) 이미지 선택 기반 제작":
 
         if st.form_submit_button(" 선택 확정", type="primary"):
             st.session_state.selected_pages = selected
+            log_event("images_selected", {
+                "book": selected_book,
+                "count": len(selected),
+                "pages": selected,
+            })
 
     # 선택된 이미지 미리보기
     if not st.session_state.selected_pages:
@@ -499,7 +534,14 @@ if mode == "(기존) 이미지 선택 기반 제작":
     if st.button("1단계: AI 대본 초안 생성", type="primary"):
         # 1. 고유 ID 생성
         st.session_state.proc_uid = uuid.uuid4().hex[:8]
-        
+        log_event("modeA_step1_start", {
+            "book": selected_book,
+            "prompt": PROMPT,
+            "default_duration": DEFAULT_DURATION,
+            "use_bgm": use_bgm,
+            "bgm_volume": bgm_volume if use_bgm else None,
+        })
+
         st.info("📜 원본 텍스트를 분석하여 대본과 화자를 설정합니다...")
 
         # 1-1. 텍스트 추출
@@ -507,16 +549,33 @@ if mode == "(기존) 이미지 선택 기반 제작":
         for name in st.session_state.selected_pages:
             text = extract_text_for_image(name, txt_file)
             page_texts.append((name, text))
-        
+
         # 세션에 원본 텍스트 저장 (나중에 참고용)
         st.session_state.raw_texts = page_texts
 
         # 1-2. OpenAI 대본 생성
         subtitle_data = generate_trailer_subtitles_with_speakers(page_texts, DEFAULT_DURATION)
-        
+
         # 결과 저장
         st.session_state.step1_scripts = subtitle_data
-        
+
+        # 사용자별 세션 폴더에 GPT 초안 그대로 기록
+        try:
+            with open(SESSION_DIR / f"modeA_step1_scripts_{st.session_state.proc_uid}.json", "w", encoding="utf-8") as _f:
+                import json as _json
+                _json.dump({
+                    "book": selected_book,
+                    "raw_texts": page_texts,
+                    "gpt_initial_scripts": subtitle_data,
+                }, _f, ensure_ascii=False, indent=2)
+        except Exception as _e:
+            print(f"[log] step1 save failed: {_e}")
+
+        log_event("modeA_step1_done", {
+            "scenes": len(subtitle_data),
+            "scripts": subtitle_data,
+        })
+
         # 2, 3단계 데이터 초기화 (새로 생성했으므로)
         st.session_state.step2_audio = None
         st.rerun()
@@ -579,9 +638,12 @@ if mode == "(기존) 이미지 선택 기반 제작":
         st.markdown("#### 2️⃣ TTS 음성 생성 및 미리듣기")
         
         if st.button("2단계: 수정된 대본으로 TTS 생성", type="primary"):
-            OUT = Path("outputs"); OUT.mkdir(exist_ok=True)
+            OUT = SESSION_DIR; OUT.mkdir(parents=True, exist_ok=True)
             uid = st.session_state.proc_uid
-            
+
+            # 수정 전 대본 (diff 분석용)
+            gpt_initial = list(st.session_state.step1_scripts)
+
             # UI 입력값(수정된 값)을 읽어서 리스트 재구성
             final_scripts = []
             for i in range(len(st.session_state.step1_scripts)):
@@ -589,10 +651,15 @@ if mode == "(기존) 이미지 선택 기반 제작":
                     "text": st.session_state[f"script_text_{i}"],
                     "speaker": st.session_state[f"script_spk_{i}"]
                 })
-            
+
             # 수정된 대본 업데이트
             st.session_state.step1_scripts = final_scripts
-            
+
+            log_event("modeA_step2_start", {
+                "gpt_initial_scripts": gpt_initial,
+                "edited_scripts": final_scripts,
+            })
+
             st.info("🎙️ TTS 음성을 생성하고 길이를 측정합니다...")
             
             # TTS 생성
@@ -611,6 +678,10 @@ if mode == "(기존) 이미지 선택 기반 제작":
                     audio_data.append({"path": None, "duration": None})
                     
             st.session_state.step2_audio = audio_data
+            log_event("modeA_step2_done", {
+                "durations": [d["duration"] for d in audio_data],
+                "files": [Path(d["path"]).name if d["path"] else None for d in audio_data],
+            })
             st.rerun()
 
     # ---------------------------------------------------------
@@ -644,8 +715,13 @@ if mode == "(기존) 이미지 선택 기반 제작":
         
         if st.button("3단계: Runway 영상 생성 및 합치기", type="primary"):
             uid = st.session_state.proc_uid
-            OUT = Path("outputs")
+            OUT = SESSION_DIR
             video_paths = []
+            log_event("modeA_step3_start", {
+                "uid": uid,
+                "scene_count": len(st.session_state.selected_pages),
+                "prompt": PROMPT,
+            })
             
             progress_bar = st.progress(0)
             status_text = st.empty()
@@ -733,6 +809,10 @@ if mode == "(기존) 이미지 선택 기반 제작":
 
             # 세션에 저장하여 리런 후에도 유지
             st.session_state.step3_final_video = str(final_video)
+            log_event("modeA_step3_done", {
+                "final_video": str(final_video),
+                "scene_count": len(final_clips),
+            })
             st.rerun()
 
     # ---------------------------------------------------------
