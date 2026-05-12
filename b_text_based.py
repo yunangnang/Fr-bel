@@ -432,8 +432,8 @@ VOICE_SAMPLE_TEXTS = {
 }
 
 
-def generate_voice_preview(voice_label: str) -> "Optional[str]":
-    """선택한 음성으로 샘플 문장을 Clova TTS로 생성. 캐시된 파일이 있으면 재사용."""
+def generate_voice_preview(voice_label: str, engine: str = "clova") -> "Optional[str]":
+    """선택한 음성으로 샘플 문장을 TTS 생성. 엔진별/음성별로 파일 캐시."""
     from tts_module import text_to_speech
 
     clova_id = VOICE_PRESETS.get(voice_label)
@@ -443,7 +443,8 @@ def generate_voice_preview(voice_label: str) -> "Optional[str]":
 
     sample_dir = Path("outputs/voice_samples")
     sample_dir.mkdir(parents=True, exist_ok=True)
-    output_path = sample_dir / f"sample_{clova_id}.mp3"
+    safe_engine = engine.replace("/", "_").replace(" ", "_")
+    output_path = sample_dir / f"sample_{safe_engine}_{clova_id}.mp3"
 
     if output_path.exists() and output_path.stat().st_size > 0:
         return str(output_path)
@@ -452,7 +453,7 @@ def generate_voice_preview(voice_label: str) -> "Optional[str]":
         text=sample_text,
         output_path=str(output_path),
         speaker=clova_id,
-        engine="clova",
+        engine=engine,
     )
     return str(output_path) if success and output_path.exists() else None
 
@@ -2033,7 +2034,27 @@ def run_text_analysis_mode(client, folder, txt_file):
             # --------------------------------
             st.divider()
             st.markdown("#### 🔊 캐릭터 음성 미리듣기")
-            st.caption("배정된 목소리가 어떤 느낌인지 확인해보세요. 위 표에서 '지정 목소리'를 바꾸고 다시 듣기를 누르면 변경된 음성이 재생됩니다.")
+            st.caption("배정된 목소리를 들어보세요. 표에서 '지정 목소리'나 아래 '엔진'을 바꾸고 다시 듣기를 누르면 새 음성으로 재생됩니다. 여기서 고른 엔진은 Step 4 음성 생성에도 그대로 사용됩니다.")
+
+            # 엔진 선택 — Step 4와 session_state로 공유
+            ENGINE_OPTIONS = ["Naver Clova", "GPT-4o Mini TTS", "Gemini 2.5 Flash TTS", "Gemini 2.5 Pro TTS"]
+            ENGINE_LABEL_TO_KEY = {
+                "Naver Clova": "clova",
+                "GPT-4o Mini TTS": "gpt",
+                "Gemini 2.5 Flash TTS": "gemini-flash",
+                "Gemini 2.5 Pro TTS": "gemini-pro",
+            }
+            if "tts_engine_choice_shared" not in st.session_state:
+                st.session_state.tts_engine_choice_shared = "Naver Clova"
+
+            st.session_state.tts_engine_choice_shared = st.radio(
+                "🎙️ 미리듣기 엔진 (Step 4와 연동됨)",
+                ENGINE_OPTIONS,
+                index=ENGINE_OPTIONS.index(st.session_state.tts_engine_choice_shared),
+                horizontal=True,
+                key="tts_engine_radio_step15",
+            )
+            current_engine_key = ENGINE_LABEL_TO_KEY[st.session_state.tts_engine_choice_shared]
 
             if "voice_preview_cache" not in st.session_state:
                 st.session_state.voice_preview_cache = {}
@@ -2052,25 +2073,29 @@ def run_text_analysis_mode(client, folder, txt_file):
                     btn_key = f"voice_preview_btn_{i}"
                     if st.button("🔊 듣기", key=btn_key, use_container_width=True):
                         with st.spinner("음성 생성 중..."):
-                            audio_path = generate_voice_preview(voice_label)
+                            audio_path = generate_voice_preview(voice_label, engine=current_engine_key)
                             if audio_path:
                                 st.session_state.voice_preview_cache[i] = {
                                     "path": audio_path,
                                     "label": voice_label,
+                                    "engine": current_engine_key,
                                 }
                             else:
                                 st.session_state.voice_preview_cache[i] = {
                                     "path": None,
                                     "label": voice_label,
+                                    "engine": current_engine_key,
                                     "error": True,
                                 }
 
                 cache_entry = st.session_state.voice_preview_cache.get(i)
-                if cache_entry and cache_entry.get("label") == voice_label:
+                if (cache_entry
+                        and cache_entry.get("label") == voice_label
+                        and cache_entry.get("engine") == current_engine_key):
                     if cache_entry.get("path") and os.path.exists(cache_entry["path"]):
                         st.audio(cache_entry["path"])
                     elif cache_entry.get("error"):
-                        st.warning("음성 생성에 실패했어요. Clova API 키 또는 음성 설정을 확인해주세요.")
+                        st.warning(f"{st.session_state.tts_engine_choice_shared} 음성 생성에 실패했어요. API 키 또는 설정을 확인해주세요.")
 
                 st.divider()
 
@@ -2630,12 +2655,19 @@ def run_text_analysis_mode(client, folder, txt_file):
         col_eng, col_opt = st.columns(2)
         
         with col_eng:
-            # TTS 모델 선택
+            # TTS 모델 선택 — Step 1.5 미리듣기와 session_state로 공유
+            _engine_opts = ["Naver Clova", "GPT-4o Mini TTS", "Gemini 2.5 Flash TTS", "Gemini 2.5 Pro TTS"]
+            if "tts_engine_choice_shared" not in st.session_state:
+                st.session_state.tts_engine_choice_shared = "Naver Clova"
+            _default_idx = _engine_opts.index(st.session_state.tts_engine_choice_shared)
+
             tts_engine_choice = st.radio(
-                "사용할 TTS 모델 선택",
-                options=["Naver Clova", "GPT-4o Mini TTS", "Gemini 2.5 Flash TTS", "Gemini 2.5 Pro TTS"],
-                index=0
+                "사용할 TTS 모델 선택 (Step 1.5 미리듣기와 연동)",
+                options=_engine_opts,
+                index=_default_idx,
+                key="tts_engine_radio_step4",
             )
+            st.session_state.tts_engine_choice_shared = tts_engine_choice
             
             # 실제 함수에 넘길 engine string 변환
             if tts_engine_choice == "Naver Clova":

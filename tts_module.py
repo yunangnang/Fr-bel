@@ -81,7 +81,29 @@ GPT_VOICE_MAP = {
     "adult_male": "ash",       # 강한 톤
     "elder_female": "shimmer",
     "elder_male": "onyx",      # 저음
-    "default": "alloy"
+    "default": "alloy",
+
+    # Clova ID -> OpenAI 음성 매핑 (Mode B의 VOICE_PRESETS와 연결)
+    "nhajun": "ash",        # 아동 남성
+    "njaewook": "ash",
+    "ndain": "ballad",      # 아동 여성
+    "ngaram": "ballad",
+    "neunwoo": "verse",     # 청년 남성
+    "njihun": "verse",
+    "nara": "coral",        # 청년 여성
+    "nyujin": "coral",
+    "nminsang": "ash",      # 성인 남성 (뉴스톤)
+    "njoonyoung": "cedar",  # 성인 남성 (부드러움)
+    "nwontak": "onyx",      # 성인 남성 (굵음) / 로봇
+    "nyejin": "sage",       # 성인 여성 (차분)
+    "nyoungmi": "shimmer",  # 성인 여성 (따뜻)
+    "njiyun": "marin",      # 나레이션
+    "njonghyun": "cedar",   # 어르신 남성
+    "nsunhee": "shimmer",   # 어르신 여성
+    "nmeow": "ballad",      # 고양이 (귀여움)
+    "nwoof": "ash",         # 강아지 (활기)
+    "nmammon": "onyx",      # 악마 (저음)
+    "nsinu": "marin",       # 요정 (중성)
 }
 
 #  Gemini 화자 매핑 (가이드 기반 별자리 이름)
@@ -96,7 +118,29 @@ GEMINI_VOICE_MAP = {
     "adult_male": "Charon",   # 남성 (굵음)
     "elder_female": "Leda",   # 여성
     "elder_male": "Charon",   # 남성
-    "default": "Puck"
+    "default": "Puck",
+
+    # Clova ID -> Gemini 음성 매핑
+    "nhajun": "Puck",
+    "njaewook": "Puck",
+    "ndain": "Aoede",
+    "ngaram": "Aoede",
+    "neunwoo": "Fenrir",
+    "njihun": "Fenrir",
+    "nara": "Aoede",
+    "nyujin": "Aoede",
+    "nminsang": "Charon",
+    "njoonyoung": "Charon",
+    "nwontak": "Charon",
+    "nyejin": "Kore",
+    "nyoungmi": "Kore",
+    "njiyun": "Puck",
+    "njonghyun": "Charon",
+    "nsunhee": "Leda",
+    "nmeow": "Aoede",
+    "nwoof": "Puck",
+    "nmammon": "Charon",
+    "nsinu": "Puck",
 }
 
 # Edge TTS 폴백 지원 (무료, 다중 목소리)
