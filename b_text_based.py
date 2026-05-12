@@ -2029,10 +2029,10 @@ def run_text_analysis_mode(client, folder, txt_file):
             # 🔊 캐릭터별 음성 미리듣기
             # --------------------------------
             st.divider()
-            st.markdown("#### 🔊 캐릭터 음성 미리듣기")
-            st.caption("배정된 목소리를 들어보세요. 표에서 '지정 목소리'나 아래 '엔진'을 바꾸고 다시 듣기를 누르면 새 음성으로 재생됩니다. 여기서 고른 엔진은 Step 4 음성 생성에도 그대로 사용됩니다.")
+            st.markdown("#### 🔊 캐릭터 음성 미리듣기 & 음성 옵션")
+            st.caption("여기서 설정한 엔진·화자 구성·속도가 Step 4 TTS 생성에 그대로 사용됩니다.")
 
-            # 엔진 선택 — Step 4와 session_state로 공유
+            # ---- 엔진 선택 (Step 4와 session_state로 공유) ----
             ENGINE_OPTIONS = ["Naver Clova", "GPT-4o Mini TTS", "Gemini 2.5 Flash TTS", "Gemini 2.5 Pro TTS"]
             ENGINE_LABEL_TO_KEY = {
                 "Naver Clova": "clova",
@@ -2044,16 +2044,77 @@ def run_text_analysis_mode(client, folder, txt_file):
                 st.session_state.tts_engine_choice_shared = "Naver Clova"
 
             st.session_state.tts_engine_choice_shared = st.radio(
-                "🎙️ 미리듣기 엔진 (Step 4와 연동됨)",
+                "🎙️ TTS 엔진",
                 ENGINE_OPTIONS,
                 index=ENGINE_OPTIONS.index(st.session_state.tts_engine_choice_shared),
                 horizontal=True,
                 key="tts_engine_radio_step15",
             )
             current_engine_key = ENGINE_LABEL_TO_KEY[st.session_state.tts_engine_choice_shared]
+            is_premium_engine_15 = "Clova" not in st.session_state.tts_engine_choice_shared
+
+            # ---- 화자 구성 / 연령대 / 속도 (Step 4에서 이동, session_state 공유) ----
+            if "tts_speaker_mode_shared" not in st.session_state:
+                st.session_state.tts_speaker_mode_shared = "다수 화자 (자동 배정)"
+            if "tts_age_category_shared" not in st.session_state:
+                st.session_state.tts_age_category_shared = "미취학 (48~72개월)"
+            if "tts_voice_speed_shared" not in st.session_state:
+                st.session_state.tts_voice_speed_shared = 0.8
+
+            with st.expander("⚙️ 음성 세부 옵션 (화자 구성 · 연령 · 속도)", expanded=False):
+                opt_col1, opt_col2 = st.columns(2)
+                with opt_col1:
+                    _spk_opts = ["다수 화자 (자동 배정)", "단일 화자 (Narrator Only)"]
+                    if st.session_state.tts_speaker_mode_shared not in _spk_opts:
+                        st.session_state.tts_speaker_mode_shared = _spk_opts[0]
+                    st.session_state.tts_speaker_mode_shared = st.selectbox(
+                        "🗣️ 목소리 구성",
+                        _spk_opts,
+                        index=_spk_opts.index(st.session_state.tts_speaker_mode_shared),
+                        disabled=not is_premium_engine_15,
+                        help="GPT/Gemini 모델 사용 시 단일 화자(나레이션 전용) 모드를 선택할 수 있습니다.",
+                        key="tts_speaker_mode_widget",
+                    )
+                    if not is_premium_engine_15:
+                        st.caption("🔒 Naver Clova는 스크립트의 화자 설정을 따릅니다.")
+
+                with opt_col2:
+                    _age_opts = ["미취학 (48~72개월)", "초등 저학년 (73~96개월)", "초등 고학년 (96개월+)", "직접 설정"]
+                    if st.session_state.tts_age_category_shared not in _age_opts:
+                        st.session_state.tts_age_category_shared = _age_opts[0]
+                    _selected_age = st.radio(
+                        "👶 대상 연령대",
+                        _age_opts,
+                        index=_age_opts.index(st.session_state.tts_age_category_shared),
+                        horizontal=False,
+                        help="연령대에 맞춰 최적의 속도가 기본 제공됩니다.",
+                        key="tts_age_category_widget",
+                    )
+                    # 연령대 변경 시 속도 기본값 자동 갱신
+                    if _selected_age != st.session_state.tts_age_category_shared:
+                        st.session_state.tts_age_category_shared = _selected_age
+                        if _selected_age == "미취학 (48~72개월)":
+                            st.session_state.tts_voice_speed_shared = 0.8
+                        elif _selected_age == "초등 저학년 (73~96개월)":
+                            st.session_state.tts_voice_speed_shared = 1.0
+                        elif _selected_age == "초등 고학년 (96개월+)":
+                            st.session_state.tts_voice_speed_shared = 1.2
+
+                st.session_state.tts_voice_speed_shared = st.slider(
+                    "음성 속도 미세 조절",
+                    min_value=0.5,
+                    max_value=1.5,
+                    value=float(st.session_state.tts_voice_speed_shared),
+                    step=0.1,
+                    help="연령대 선택 후에도 여기서 세밀하게 조절할 수 있습니다.",
+                    key="tts_voice_speed_widget",
+                )
+                st.caption(f"현재 설정된 속도: **{st.session_state.tts_voice_speed_shared}x**")
 
             if "voice_preview_cache" not in st.session_state:
                 st.session_state.voice_preview_cache = {}
+
+            st.markdown("##### 🎵 캐릭터별 음성 미리듣기")
 
             for i, char in enumerate(edited_chars):
                 char_name = char.get("name") or f"캐릭터 {i+1}"
@@ -2651,91 +2712,33 @@ def run_text_analysis_mode(client, folder, txt_file):
         current_full_audio = st.session_state.get("track_b_full_audio", "")
 
         # ------------------------------------------------------------------
-        # [UI] 생성 버튼
+        # [UI] 음성 설정 요약 (Step 1.5에서 설정한 값을 읽어옴)
         # ------------------------------------------------------------------
-        st.markdown("#### 🛠️ 음성 생성 설정")
-    
-        col_eng, col_opt = st.columns(2)
-        
-        with col_eng:
-            # TTS 모델 선택 — Step 1.5 미리듣기와 session_state로 공유
-            _engine_opts = ["Naver Clova", "GPT-4o Mini TTS", "Gemini 2.5 Flash TTS", "Gemini 2.5 Pro TTS"]
-            if "tts_engine_choice_shared" not in st.session_state:
-                st.session_state.tts_engine_choice_shared = "Naver Clova"
-            _default_idx = _engine_opts.index(st.session_state.tts_engine_choice_shared)
+        st.markdown("#### 🛠️ 음성 생성 설정 (Step 1.5에서 변경)")
 
-            tts_engine_choice = st.radio(
-                "사용할 TTS 모델 선택 (Step 1.5 미리듣기와 연동)",
-                options=_engine_opts,
-                index=_default_idx,
-                key="tts_engine_radio_step4",
-            )
-            if st.session_state.tts_engine_choice_shared != tts_engine_choice:
-                log_event("modeB_step4_engine_changed", {
-                    "from": st.session_state.tts_engine_choice_shared,
-                    "to": tts_engine_choice,
-                })
-            st.session_state.tts_engine_choice_shared = tts_engine_choice
-            
-            # 실제 함수에 넘길 engine string 변환
-            if tts_engine_choice == "Naver Clova":
-                selected_engine = "clova"
-            elif tts_engine_choice == "GPT-4o Mini TTS":
-                selected_engine = "gpt" # 혹은 함수 내부 구현에 따라 'gpt-4o-mini' 등
-            elif tts_engine_choice == "Gemini 2.5 Flash TTS":
-                selected_engine = "gemini-flash"
-            else: # Gemini 2.5 PRO TTS
-                selected_engine = "gemini-pro"
+        tts_engine_choice = st.session_state.get("tts_engine_choice_shared", "Naver Clova")
+        speaker_mode = st.session_state.get("tts_speaker_mode_shared", "다수 화자 (자동 배정)")
+        age_category = st.session_state.get("tts_age_category_shared", "미취학 (48~72개월)")
+        voice_speed = st.session_state.get("tts_voice_speed_shared", 0.8)
 
-        with col_opt:
-            # 1. 화자 설정 UI (조건부 활성화)
-            # Clova가 아닌 경우(GPT/Gemini)에만 변경 가능하도록 설정
-            is_premium_engine = "Clova" not in tts_engine_choice
-            
-            st.write("🗣️ 화자 구성 설정")
-            speaker_mode = st.selectbox(
-                "목소리 구성", 
-                ["다수 화자 (자동 배정)", "단일 화자 (Narrator Only)"],
-                index=0, # 기본값: 다수 화자
-                disabled=not is_premium_engine, # Clova면 선택 불가능하게 잠금
-                help="GPT/Gemini 모델 사용 시 단일 화자(나레이션 전용) 모드를 선택할 수 있습니다."
-            )
-            
-            # Clova 선택 시 안내 문구
-            if not is_premium_engine:
-                st.caption("🔒 Naver Clova는 스크립트의 화자 설정을 따릅니다.")
-            # 2. 음성 속도 조절 슬라이더
-            st.write("👶 대상 연령 및 속도 설정")    
-            # 1. 대상 연령대 선택 (사전 설정)
-            age_category = st.radio(
-                "대상 연령대 선택",
-                ["미취학 (48~72개월)", "초등 저학년 (73~96개월)", "초등 고학년 (96개월+)", "직접 설정"],
-                horizontal=True,
-                help="연령대에 맞춰 최적의 속도가 기본 제공됩니다."
-            )
+        is_premium_engine = "Clova" not in tts_engine_choice
 
-            # 2. 연령대별 기본값 매핑
-            if age_category == "미취학 (48~72개월)":
-                default_speed = 0.8  # 천천히 읽어줌
-            elif age_category == "초등 저학년 (73~96개월)":
-                default_speed = 1.0  # 표준 속도
-            elif age_category == "초등 고학년 (96개월+)":
-                default_speed = 1.2  # 조금 빠른 숏폼 스타일
-            else:
-                default_speed = 1.0
+        # 실제 함수에 넘길 engine string 변환
+        _engine_map = {
+            "Naver Clova": "clova",
+            "GPT-4o Mini TTS": "gpt",
+            "Gemini 2.5 Flash TTS": "gemini-flash",
+            "Gemini 2.5 Pro TTS": "gemini-pro",
+        }
+        selected_engine = _engine_map.get(tts_engine_choice, "clova")
 
-            # 3. 세밀한 조정을 위한 하단 바 (Slider)
-            # 연령대를 선택하면 이 바의 위치가 자동으로 움직입니다.
-            voice_speed = st.slider(
-                "음성 속도 미세 조절",
-                min_value=0.5,
-                max_value=1.5,
-                value=default_speed, # 위에서 정해진 값이 초기값으로 들어감
-                step=0.1,
-                help="연령대 선택 후에도 여기서 세밀하게 속도를 바꿀 수 있습니다."
-            )
-            
-            st.caption(f"현재 설정된 속도: **{voice_speed}x**")
+        summary_col1, summary_col2, summary_col3, summary_col4 = st.columns(4)
+        summary_col1.metric("엔진", tts_engine_choice)
+        summary_col2.metric("화자 구성", "다수 화자" if speaker_mode.startswith("다수") else "단일 화자")
+        summary_col3.metric("연령대", age_category.split(" ")[0])
+        summary_col4.metric("음성 속도", f"{voice_speed}x")
+
+        st.caption("⬆️ 음성 옵션을 바꾸려면 Step 1.5의 '🔊 캐릭터 음성 미리듣기 & 음성 옵션' 섹션으로 돌아가세요.")
 
         st.write("") # 간격
         # ------------------------------------------------------------------
