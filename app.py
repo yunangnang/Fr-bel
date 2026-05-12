@@ -44,7 +44,7 @@ import b_text_based
 # Streamlit UI 설정
 # --------------------------------
 st.set_page_config(page_title="AI 숏츠 생성기", layout="wide")
-st.title(" 삽화 기반 AI 숏츠 생성기 + 자막 오버레이 (Runway Gen4)")
+st.title(" 동화책 예고편 만들기 ")
 
 # --------------------------------
 # 기본 경로 설정
@@ -188,8 +188,18 @@ if mode == "(기존) 이미지 선택 기반 제작":
     st.divider()
     st.subheader("🎵 배경음악(BGM) 설정")
 
+    BGM_MAPPING = {
+        "리딩토탈_48개월_내지_아기토끼포포의가족_최종 2_ISBN": "19",
+        "리딩토탈_48개월_표지_아기토끼포포의가족_QR교체_수정_ISBN": "19",
+        "리딩토탈_48개월_내지_헨젤과그레텔_재쇄2_ISBN": "110",
+        "리딩토탈_48개월_표지_헨젤과그레텔_재쇄1_ISBN": "110",
+    }
+
     def get_bgm_folder_name(full_name):
-        """BGM 폴더 안의 하위 폴더명과 유사도 비교하여 가장 일치하는 폴더명 반환"""
+        """책 이름으로 BGM 폴더명 찾기 (명시적 매핑 우선, 없으면 유사도 비교)"""
+        if full_name in BGM_MAPPING:
+            return BGM_MAPPING[full_name]
+
         from difflib import SequenceMatcher
         bgm_root = BASE_DIR / "BGM"
         if not bgm_root.exists():

@@ -1,0 +1,50 @@
+# Secrets & env
+.env
+*.json
+tts-gemini-env.json
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+
+# macOS
+.DS_Store
+
+# Streamlit cache
+.streamlit/secrets.toml
+
+# --- 데이터 자산: 데모용 2권만 포함, 나머지는 모두 제외 ---
+
+# character 폴더: 기본 제외 후 데모용 2권만 허용
+character/*
+!character/리딩토탈_48개월_내지_아기토끼포포의가족_최종 2_ISBN/
+!character/리딩토탈_48개월_표지_아기토끼포포의가족_QR교체_수정_ISBN/
+!character/리딩토탈_48개월_내지_헨젤과그레텔_재쇄2_ISBN/
+!character/리딩토탈_48개월_표지_헨젤과그레텔_재쇄1_ISBN/
+!character/txt/
+
+# txt 폴더: 048 월령만, 그 중에서도 두 책 txt만 허용
+character/txt/*
+!character/txt/048/
+character/txt/048/*
+!character/txt/048/리딩토탈_48개월_내지_아기토끼포포의가족_최종 2_ISBN.txt
+!character/txt/048/리딩토탈_48개월_내지_헨젤과그레텔_재쇄2_ISBN.txt
+
+# BGM 폴더: 데모용 2개만 포함
+BGM/*
+!BGM/19/
+!BGM/110/
+
+# 출력물 / 임시
+out/
+output/
+*.mp4
+*.wav
+*.mp3
+*.m4a
+!BGM/**/*.m4a
+!BGM/**/*.mp3
+!BGM/**/*.wav
