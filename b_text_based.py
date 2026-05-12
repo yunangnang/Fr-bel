@@ -1510,9 +1510,19 @@ def parse_book_text_by_page(txt_path: Path):
 
 def extract_page_num_from_filename(filename: str):
     """
-    파일명(page_006.png)에서 숫자(6)만 추출
+    파일명에서 페이지 번호 추출.
+    지원 패턴:
+      - page_006.png  → 6
+      - ..._#07.png   → 7  (리딩토탈 시리즈)
+      - ..._007.png   → 7  (확장자 직전 숫자)
     """
     m = re.search(r"page_(\d+)", filename)
+    if m:
+        return int(m.group(1))
+    m = re.search(r"#(\d+)", filename)
+    if m:
+        return int(m.group(1))
+    m = re.search(r"(\d+)\.(?:png|jpg|jpeg|webp)$", filename, re.IGNORECASE)
     if m:
         return int(m.group(1))
     return None
@@ -1529,7 +1539,10 @@ def analyze_spread_structure(candidates: list):
     - 반환: { page_num: {"pair": pair_num, "has_text": bool, "is_spread": bool} }
     """
     spread_map = {}
-    
+
+    # page_num이 정수인 항목만 통과 (None/missing 방어)
+    candidates = [c for c in candidates if isinstance(c.get("page_num"), int)]
+
     # page_num 기준으로 정렬
     sorted_pages = sorted(candidates, key=lambda x: x["page_num"])
     
