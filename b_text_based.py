@@ -378,73 +378,84 @@ def analyze_characters_and_speakers(client, full_text: str):
     
     return json.loads(response.choices[0].message.content)
 
+# GPT 엔진 기준 9개 의미 카테고리. 캐릭터 차별화는 톤 프롬프트로 처리.
 GPT_VOICE_TO_UI_LABEL = {
-    # 아동
-    "child_male": "👦 아동 남성 (하준)",
-    "child_female": "👧 아동 여성 (다인)",
-    "child_bright": "👧 아동 여성 (가람 - 밝음)",
-    
-    # 청년
-    "young_male": "👱 청년 남성 (은우)",
-    "young_female": "👩 청년 여성 (아라)",
-    
-    # 성인
-    "adult_male": "👨 성인 남성 (민상 - 뉴스톤)",
-    "adult_male_deep": "👨 성인 남성 (원탁 - 굵고 낮음)",
-    "adult_female": "👩 성인 여성 (예진 - 차분함)",
-    
-    # 노인
-    "elder_male": "👴 어르신 남성 (종현)",
-    "elder_female": "👵 어르신 여성 (선희)",
-    
-    # 특수
-    "cute_animal": "🐱 고양이/동물 (야옹이)",
-    "dog": "🐶 강아지 (멍멍이)",
-    "demon": "😈 악마/괴물 (마몬)",
-    "robot": "🤖 로봇/기계 (원탁)",
-    "fairy": "🧚 요정 (신우 - 중성적)",
-    "narrator": "👩 성인 여성 (지윤 - 나레이션)"
+    "child_male": "👦 아동 남성",
+    "child_female": "👶 아동 여성",
+    "child_bright": "👶 아동 여성",
+    "young_male": "👱 청년 남성",
+    "young_female": "👧 청년 여성",
+    "adult_male": "👨 성인 남성 (부드러움)",
+    "adult_male_deep": "👨 성인 남성 (굵음)",
+    "adult_female": "👩 성인 여성",
+    "elder_male": "👨 성인 남성 (부드러움)",
+    "elder_female": "👵 노인 여성",
+    "cute_animal": "👶 아동 여성",
+    "dog": "👦 아동 남성",
+    "demon": "👨 성인 남성 (굵음)",
+    "robot": "👨 성인 남성 (굵음)",
+    "fairy": "🎙️ 나레이터",
+    "narrator": "🎙️ 나레이터",
 }
 
-# 3. VOICE_SAMPLE_TEXTS (각 음성의 성격이 드러나는 미리듣기 문장)
 VOICE_SAMPLE_TEXTS = {
-    "👦 아동 남성 (하준)": "엄마! 저 학교 다녀왔어요!",
-    "👦 아동 남성 (재욱)": "와! 이거 진짜 재밌어요!",
-    "👧 아동 여성 (다인)": "어, 이게 뭐지? 너무 신기해!",
-    "👧 아동 여성 (가람 - 밝음)": "오늘은 정말 즐거운 하루였어요!",
-    "👱 청년 남성 (은우)": "걱정하지 마. 내가 도와줄게.",
-    "👱 청년 남성 (지훈)": "그래, 우리 함께 가보자!",
-    "👩 청년 여성 (아라)": "정말요? 너무 좋아요!",
-    "👩 청년 여성 (유진)": "이쪽으로 따라오세요.",
-    "👨 성인 남성 (민상 - 뉴스톤)": "오늘의 주요 소식을 전해드립니다.",
-    "👨 성인 남성 (준영 - 부드러움)": "괜찮아, 모든 게 다 잘 될 거야.",
-    "👨 성인 남성 (원탁 - 굵고 낮음)": "이 숲은 위험하다. 조심해야 한다.",
-    "👩 성인 여성 (예진 - 차분함)": "천천히 생각해보고 결정하렴.",
-    "👩 성인 여성 (영미 - 따뜻함)": "우리 아가, 이리 와서 안아줄까?",
-    "👩 성인 여성 (지윤 - 나레이션)": "옛날 옛적, 어느 마을에 한 아이가 살았어요.",
-    "👴 어르신 남성 (종현)": "허허, 그래. 옛날에는 말이다.",
-    "👵 어르신 여성 (선희)": "에구, 우리 강아지. 잘 다녀왔니?",
-    "🐱 고양이/동물 (야옹이)": "야옹~ 배고프다옹!",
-    "🐶 강아지 (멍멍이)": "멍멍! 같이 놀자!",
-    "😈 악마/괴물 (마몬)": "크크크. 어디 한번 도망쳐 봐라!",
-    "🤖 로봇/기계 (원탁)": "삐빅. 명령을 수행합니다.",
-    "🧚 요정 (신우 - 중성적)": "두려워하지 마. 내가 함께 있을게.",
+    "👶 아동 여성": "어, 이게 뭐지? 너무 신기해!",
+    "👦 아동 남성": "엄마! 저 학교 다녀왔어요!",
+    "👧 청년 여성": "정말요? 너무 좋아요!",
+    "👱 청년 남성": "걱정하지 마. 내가 도와줄게.",
+    "👨 성인 남성 (부드러움)": "괜찮아, 모든 게 다 잘 될 거야.",
+    "👨 성인 남성 (굵음)": "이 숲은 위험하다. 조심해야 한다.",
+    "👩 성인 여성": "천천히 생각해보고 결정하렴.",
+    "👵 노인 여성": "에구, 우리 강아지. 잘 다녀왔니?",
+    "🎙️ 나레이터": "옛날 옛적, 어느 마을에 한 아이가 살았어요.",
 }
 
 
-def generate_voice_preview(voice_label: str, engine: str = "clova") -> "Optional[str]":
-    """선택한 음성으로 샘플 문장을 TTS 생성. 엔진별/음성별로 파일 캐시."""
+# UI 라벨 → speaker ID. 9개 카테고리는 각각 distinct한 GPT 보이스에 1:1로 대응한다.
+# (ndain→ballad, nhajun→ash, nara→coral, neunwoo→verse, njoonyoung→cedar,
+#  nwontak→onyx, nyejin→sage, nsunhee→shimmer, njiyun→marin — tts_module.GPT_VOICE_MAP 참고)
+VOICE_PRESETS = {
+    "--- 자동/기본값 ---": None,
+    "👶 아동 여성": "ndain",
+    "👦 아동 남성": "nhajun",
+    "👧 청년 여성": "nara",
+    "👱 청년 남성": "neunwoo",
+    "👨 성인 남성 (부드러움)": "njoonyoung",
+    "👨 성인 남성 (굵음)": "nwontak",
+    "👩 성인 여성": "nyejin",
+    "👵 노인 여성": "nsunhee",
+    "🎙️ 나레이터": "njiyun",
+}
+
+
+def generate_voice_preview(
+    voice_label: str,
+    engine: str = "gpt",
+    tone: str = "",
+) -> "Optional[str]":
+    """선택한 음성으로 샘플 문장을 TTS 생성. 엔진/음성/톤 조합별로 파일 캐시."""
     from tts_module import text_to_speech
+    import hashlib
 
     clova_id = VOICE_PRESETS.get(voice_label)
     sample_text = VOICE_SAMPLE_TEXTS.get(voice_label)
     if not clova_id or not sample_text:
         return None
 
+    # 톤 프롬프트가 있으면 GPT instructions로 주입되도록 style_prompt 구성.
+    style_prompt = ""
+    tone_clean = (tone or "").strip()
+    if tone_clean:
+        style_prompt = (
+            f"Roleplay with a '{tone_clean}' tone. "
+            f"Speak the following Korean text naturally with the matching emotion."
+        )
+
     sample_dir = Path("outputs/voice_samples")
     sample_dir.mkdir(parents=True, exist_ok=True)
     safe_engine = engine.replace("/", "_").replace(" ", "_")
-    output_path = sample_dir / f"sample_{safe_engine}_{clova_id}.mp3"
+    tone_hash = hashlib.md5(tone_clean.encode()).hexdigest()[:8] if tone_clean else "default"
+    output_path = sample_dir / f"sample_{safe_engine}_{clova_id}_{tone_hash}.mp3"
 
     if output_path.exists() and output_path.stat().st_size > 0:
         return str(output_path)
@@ -454,36 +465,9 @@ def generate_voice_preview(voice_label: str, engine: str = "clova") -> "Optional
         output_path=str(output_path),
         speaker=clova_id,
         engine=engine,
+        style_prompt=style_prompt,
     )
     return str(output_path) if success and output_path.exists() else None
-
-
-# 2. VOICE_PRESETS (UI 표시용 -> 실제 Clova ID)
-# (이전 답변과 동일하게 유지)
-VOICE_PRESETS = {
-    "--- 자동/기본값 ---": None,
-    "👦 아동 남성 (하준)": "nhajun",
-    "👦 아동 남성 (재욱)": "njaewook",
-    "👧 아동 여성 (다인)": "ndain",
-    "👧 아동 여성 (가람 - 밝음)": "ngaram",
-    "👱 청년 남성 (은우)": "neunwoo",
-    "👱 청년 남성 (지훈)": "njihun",
-    "👩 청년 여성 (아라)": "nara",
-    "👩 청년 여성 (유진)": "nyujin",
-    "👨 성인 남성 (민상 - 뉴스톤)": "nminsang",
-    "👨 성인 남성 (준영 - 부드러움)": "njoonyoung",
-    "👨 성인 남성 (원탁 - 굵고 낮음)": "nwontak",
-    "👩 성인 여성 (예진 - 차분함)": "nyejin",
-    "👩 성인 여성 (영미 - 따뜻함)": "nyoungmi",
-    "👩 성인 여성 (지윤 - 나레이션)": "njiyun",
-    "👴 어르신 남성 (종현)": "njonghyun",
-    "👵 어르신 여성 (선희)": "nsunhee",
-    "🐱 고양이/동물 (야옹이)": "nmeow",
-    "🐶 강아지 (멍멍이)": "nwoof",
-    "😈 악마/괴물 (마몬)": "nmammon",
-    "🤖 로봇/기계 (원탁)": "nwontak",
-    "🧚 요정 (신우 - 중성적)": "nsinu",
-}
 # --------------------------------
 # [Step 2 Helper] 예고편 구간 확인
 # --------------------------------
@@ -1991,34 +1975,33 @@ def run_text_analysis_mode(client, folder, txt_file):
         if st.session_state.track_b_characters:
             char_data = st.session_state.track_b_characters.get("characters", [])
             
-            # [안전장치] 기존 파일에 'voice_label' 필드가 없을 경우 대비 (기본값 채우기)
+            # [안전장치] voice_label이 없거나, 옛 라벨(예: "👦 아동 남성 (하준)")이면 GPT_VOICE_TO_UI_LABEL로 다시 매핑.
             for char in char_data:
-                if "voice_label" not in char:
-                    char["voice_label"] = "--- 자동/기본값 ---"
+                _label = char.get("voice_label")
+                if _label not in VOICE_PRESETS:
+                    _vt = char.get("voice_type", "narrator")
+                    char["voice_label"] = GPT_VOICE_TO_UI_LABEL.get(_vt, "🎙️ 나레이터")
         
             st.markdown("#### 🎭 등장인물 프로필 & 성우 설정")
             st.caption("AI가 추천한 목소리가 마음에 들지 않으면, 아래 **'지정 목소리'** 항목을 클릭하여 변경하세요.")
 
-            # 데이터 에디터 
+            # 데이터 에디터 (컬럼 순서: ID → 이름 → 말투/성격 → 지정 목소리 → aliases → 성별 → 연령대)
             edited_chars = st.data_editor(
                 char_data,
+                column_order=["id", "name", "tone", "voice_label", "aliases", "gender", "age_group"],
                 column_config={
+                    "id": st.column_config.TextColumn("ID", disabled=True, width="small"),
                     "name": "이름 (대표)",
-                    "gender": st.column_config.SelectboxColumn("성별", options=["Male", "Female", "Unknown"], width="small"),
-                    "age_group": st.column_config.SelectboxColumn("연령대", options=["Child", "Young","Adult", "Elder"], width="small"),
-                    
-                    # ★ 목소리 선택 
+                    "tone": st.column_config.TextColumn("말투/성격", width="medium"),
                     "voice_label": st.column_config.SelectboxColumn(
                         "🎙️ 지정 목소리 (TTS)",
-                        options=list(VOICE_PRESETS.keys()), # 상단에 정의한 프리셋 목록
+                        options=list(VOICE_PRESETS.keys()),
                         width="medium",
                         required=True,
                         help="이 캐릭터의 대사를 읽을 성우를 선택하세요."
                     ),
-                    
-                    "tone": st.column_config.TextColumn("말투/성격", width="medium"),
-                    "visual": st.column_config.TextColumn("외모 묘사", width="medium"),
-                    "id": st.column_config.TextColumn("ID", disabled=True, width="small")
+                    "gender": st.column_config.SelectboxColumn("성별", options=["Male", "Female", "Unknown"], width="small"),
+                    "age_group": st.column_config.SelectboxColumn("연령대", options=["Child", "Young", "Adult", "Elder"], width="small"),
                 },
                 num_rows="dynamic",
                 key="editor_chars_1_5"
@@ -2031,16 +2014,19 @@ def run_text_analysis_mode(client, folder, txt_file):
             st.markdown("#### 🔊 캐릭터 음성 미리듣기 & 음성 옵션")
             st.caption("여기서 설정한 엔진·화자 구성·속도가 TTS 음성 생성에 그대로 사용됩니다.")
 
-            # ---- 엔진 선택 (Step 4와 session_state로 공유) ----
-            ENGINE_OPTIONS = ["Naver Clova", "GPT-4o Mini TTS", "Gemini 2.5 Flash TTS", "Gemini 2.5 Pro TTS"]
+            # ---- TTS 엔진 선택 (기본값: Clova) ----
+            ENGINE_OPTIONS = ["Naver Clova", "GPT-4o Mini TTS"]
             ENGINE_LABEL_TO_KEY = {
                 "Naver Clova": "clova",
                 "GPT-4o Mini TTS": "gpt",
-                "Gemini 2.5 Flash TTS": "gemini-flash",
                 "Gemini 2.5 Pro TTS": "gemini-pro",
             }
-            if "tts_engine_choice_shared" not in st.session_state:
-                st.session_state.tts_engine_choice_shared = "Naver Clova"
+            DEFAULT_ENGINE_LABEL = "Naver Clova"
+            if (
+                "tts_engine_choice_shared" not in st.session_state
+                or st.session_state.tts_engine_choice_shared not in ENGINE_OPTIONS
+            ):
+                st.session_state.tts_engine_choice_shared = DEFAULT_ENGINE_LABEL
 
             st.session_state.tts_engine_choice_shared = st.radio(
                 "🎙️ TTS 엔진",
@@ -2079,45 +2065,62 @@ def run_text_analysis_mode(client, folder, txt_file):
 
                 with opt_col2:
                     _age_opts = ["미취학 (48~72개월)", "초등 저학년 (73~96개월)", "초등 고학년 (96개월+)", "직접 설정"]
+                    _AGE_TO_SPEED = {
+                        "미취학 (48~72개월)": 0.8,
+                        "초등 저학년 (73~96개월)": 1.0,
+                        "초등 고학년 (96개월+)": 1.2,
+                    }
                     if st.session_state.tts_age_category_shared not in _age_opts:
                         st.session_state.tts_age_category_shared = _age_opts[0]
-                    _selected_age = st.radio(
+
+                    # 위젯 key 초기화 (없으면 shared state에서 값 가져오기)
+                    if "tts_age_category_widget" not in st.session_state:
+                        st.session_state.tts_age_category_widget = st.session_state.tts_age_category_shared
+                    if "tts_voice_speed_widget" not in st.session_state:
+                        st.session_state.tts_voice_speed_widget = float(st.session_state.tts_voice_speed_shared)
+
+                    def _on_age_change():
+                        # 라디오 변경 시 슬라이더 위젯 값을 직접 갱신 (Streamlit 위젯 상태 규칙 대응)
+                        new_age = st.session_state.tts_age_category_widget
+                        st.session_state.tts_age_category_shared = new_age
+                        preset = _AGE_TO_SPEED.get(new_age)
+                        if preset is not None:
+                            st.session_state.tts_voice_speed_widget = preset
+                            st.session_state.tts_voice_speed_shared = preset
+                        # "직접 설정"은 preset 없음 → 슬라이더 값 그대로 유지
+
+                    st.radio(
                         "👶 대상 연령대",
                         _age_opts,
-                        index=_age_opts.index(st.session_state.tts_age_category_shared),
                         horizontal=False,
-                        help="연령대에 맞춰 최적의 속도가 기본 제공됩니다.",
+                        help="연령대를 누르면 아래 속도 슬라이더가 자동으로 맞춰집니다.",
+                        on_change=_on_age_change,
                         key="tts_age_category_widget",
                     )
-                    # 연령대 변경 시 속도 기본값 자동 갱신
-                    if _selected_age != st.session_state.tts_age_category_shared:
-                        st.session_state.tts_age_category_shared = _selected_age
-                        if _selected_age == "미취학 (48~72개월)":
-                            st.session_state.tts_voice_speed_shared = 0.8
-                        elif _selected_age == "초등 저학년 (73~96개월)":
-                            st.session_state.tts_voice_speed_shared = 1.0
-                        elif _selected_age == "초등 고학년 (96개월+)":
-                            st.session_state.tts_voice_speed_shared = 1.2
 
-                st.session_state.tts_voice_speed_shared = st.slider(
+                st.slider(
                     "음성 속도 미세 조절",
                     min_value=0.5,
                     max_value=1.5,
-                    value=float(st.session_state.tts_voice_speed_shared),
                     step=0.1,
                     help="연령대 선택 후에도 여기서 세밀하게 조절할 수 있습니다.",
                     key="tts_voice_speed_widget",
                 )
+                # 슬라이더 값을 shared state로 미러링 (Step 4에서 voice_speed로 읽힘)
+                st.session_state.tts_voice_speed_shared = st.session_state.tts_voice_speed_widget
+
                 st.caption(f"현재 설정된 속도: **{st.session_state.tts_voice_speed_shared}x**")
 
             if "voice_preview_cache" not in st.session_state:
                 st.session_state.voice_preview_cache = {}
 
             st.markdown("##### 🎵 캐릭터별 음성 미리듣기")
+            st.caption("위 표의 **말투/성격** 칸을 수정하면 그 톤이 음성에 반영됩니다. 듣기 버튼으로 즉시 확인하세요.")
 
             for i, char in enumerate(edited_chars):
                 char_name = char.get("name") or f"캐릭터 {i+1}"
-                voice_label = char.get("voice_label", "--- 자동/기본값 ---")
+                voice_label = char.get("voice_label", "🎙️ 나레이터")
+                tone_text = (char.get("tone") or "").strip()
 
                 preview_col_info, preview_col_btn = st.columns([4, 1])
                 with preview_col_info:
@@ -2125,34 +2128,46 @@ def run_text_analysis_mode(client, folder, txt_file):
                     sample = VOICE_SAMPLE_TEXTS.get(voice_label)
                     if sample:
                         st.caption(f"샘플 대사: \"{sample}\"")
+                    if tone_text:
+                        st.caption(f"🎭 적용 톤: _{tone_text}_")
+                    else:
+                        st.caption("🎭 적용 톤: _기본 (톤 없음)_")
                 with preview_col_btn:
                     btn_key = f"voice_preview_btn_{i}"
                     if st.button("🔊 듣기", key=btn_key, use_container_width=True):
                         log_event("modeB_voice_preview_clicked", {
                             "character": char_name,
                             "voice_label": voice_label,
+                            "tone": tone_text,
                             "engine": current_engine_key,
                         })
                         with st.spinner("음성 생성 중..."):
-                            audio_path = generate_voice_preview(voice_label, engine=current_engine_key)
+                            audio_path = generate_voice_preview(
+                                voice_label,
+                                engine=current_engine_key,
+                                tone=tone_text,
+                            )
                             if audio_path:
                                 st.session_state.voice_preview_cache[i] = {
                                     "path": audio_path,
                                     "label": voice_label,
                                     "engine": current_engine_key,
+                                    "tone": tone_text,
                                 }
                             else:
                                 st.session_state.voice_preview_cache[i] = {
                                     "path": None,
                                     "label": voice_label,
                                     "engine": current_engine_key,
+                                    "tone": tone_text,
                                     "error": True,
                                 }
 
                 cache_entry = st.session_state.voice_preview_cache.get(i)
                 if (cache_entry
                         and cache_entry.get("label") == voice_label
-                        and cache_entry.get("engine") == current_engine_key):
+                        and cache_entry.get("engine") == current_engine_key
+                        and cache_entry.get("tone", "") == tone_text):
                     if cache_entry.get("path") and os.path.exists(cache_entry["path"]):
                         st.audio(cache_entry["path"])
                     elif cache_entry.get("error"):
@@ -2757,7 +2772,6 @@ def run_text_analysis_mode(client, folder, txt_file):
         _engine_map = {
             "Naver Clova": "clova",
             "GPT-4o Mini TTS": "gpt",
-            "Gemini 2.5 Flash TTS": "gemini-flash",
             "Gemini 2.5 Pro TTS": "gemini-pro",
         }
         selected_engine = _engine_map.get(tts_engine_choice, "clova")
