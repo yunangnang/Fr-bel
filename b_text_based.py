@@ -1797,8 +1797,6 @@ def run_text_analysis_mode(client, folder, txt_file):
     if txt_file.exists():
         full_text = txt_file.read_text(encoding="utf-8")
         extracted_title = extract_title_from_filename(txt_file.name)
-        with st.expander(f"📄 원본 텍스트 확인 (추출 제목: {extracted_title})"):
-            st.text_area("Full Text", full_text, height=200)
     else:
         st.error("TXT 파일이 없습니다.")
         st.stop()
@@ -1985,9 +1983,21 @@ def run_text_analysis_mode(client, folder, txt_file):
             st.markdown("#### 🎭 등장인물 프로필 & 성우 설정")
             st.caption("AI가 추천한 목소리가 마음에 들지 않으면, 아래 **'지정 목소리'** 항목을 클릭하여 변경하세요.")
 
+            # voice_type / visual은 편집기에 노출하지 않는다. 다운스트림(대본 프롬프트 등)이
+            # voice_type을 참조하므로 편집 후 id 기준으로 다시 병합한다.
+            _HIDDEN_FIELDS = ("voice_type", "visual")
+            _char_data_for_editor = [
+                {k: v for k, v in c.items() if k not in _HIDDEN_FIELDS}
+                for c in char_data
+            ]
+            _hidden_map = {
+                c.get("id"): {k: c.get(k) for k in _HIDDEN_FIELDS if k in c}
+                for c in char_data if c.get("id")
+            }
+
             # 데이터 에디터 (컬럼 순서: ID → 이름 → 말투/성격 → 지정 목소리 → aliases → 성별 → 연령대)
             edited_chars = st.data_editor(
-                char_data,
+                _char_data_for_editor,
                 column_order=["id", "name", "tone", "voice_label", "aliases", "gender", "age_group"],
                 column_config={
                     "id": st.column_config.TextColumn("ID", disabled=True, width="small"),
@@ -2006,6 +2016,15 @@ def run_text_analysis_mode(client, folder, txt_file):
                 num_rows="dynamic",
                 key="editor_chars_1_5"
             )
+
+            # 편집 후, 숨겼던 필드 복원 (새 행이면 기본값 채움)
+            for _c in edited_chars:
+                _cid = _c.get("id")
+                _restore = _hidden_map.get(_cid, {})
+                if "voice_type" not in _c:
+                    _c["voice_type"] = _restore.get("voice_type", "narrator")
+                if "visual" not in _c:
+                    _c["visual"] = _restore.get("visual", "")
 
             # --------------------------------
             # 🔊 캐릭터별 음성 미리듣기
@@ -2340,8 +2359,8 @@ def run_text_analysis_mode(client, folder, txt_file):
         if st.session_state.track_b_segments:
             options = st.session_state.track_b_segments
             
-            # 라디오 버튼을 위한 라벨 생성
-            radio_options = [f"[{opt['type']}] {opt['title']}" for opt in options]
+            # 라디오 라벨은 archetype 태그만 노출 (AI 생성 제목은 숨김)
+            radio_options = [f"[{opt['type']}]" for opt in options]
             
             selected_label = st.radio(
                 "어떤 스타일의 예고편을 만드시겠습니까?",
