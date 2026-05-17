@@ -30,7 +30,8 @@ from tts_module import (
 from tts_core import (
     add_audio_to_video,
     concat_videos_with_audio,
-    get_audio_duration
+    get_audio_duration,
+    concat_audio_files,
 )
 
 import re
@@ -179,6 +180,7 @@ if st.session_state.current_mode != mode:
     _MODE_STATE_KEYS = (
         # Mode A 산출물
         "step1_scripts", "step2_audio", "step3_final_video", "raw_texts", "proc_uid",
+        "mode_a_characters",
         # Mode B 산출물
         "track_b_analysis", "track_b_characters", "track_b_segments", "track_b_step",
         "track_b_audio", "track_b_full_audio", "track_b_matches", "track_b_candidates",
@@ -226,6 +228,116 @@ if mode == "이미지 선택 기반 제작":
         if match:
             return match.group(1).strip()
         return ""
+
+    # --------------------------------
+    # 캐릭터 분석 기반 TTS (Mode B의 analyze_characters_and_speakers 결과를 활용)
+    # --------------------------------
+    MODE_A_TTS_ENGINE = "gpt"  # Clova 키 복구 후 "clova"로 변경
+
+    def _generate_mode_a_audio_with_characters(scripts, characters, dialogue_map, output_dir, uid):
+        """각 장면 텍스트를 따옴표 기준으로 분리, dialogue_map으로 화자/톤 식별,
+        캐릭터별 voice_label에 매핑된 보이스로 합성 후 concat.
+        매칭 안 되는 대사나 narration은 scene의 기본 speaker(narrator)로 fallback.
+        dialogue_map 각 항목의 'tone' 필드가 있으면 그 대사 합성 시 style_prompt로 전달."""
+        char_voice = {}
+        for c in characters or []:
+            cid = c.get("id")
+            voice_label = c.get("voice_label", "🎙️ 나레이터")
+            clova_id = b_text_based.VOICE_PRESETS.get(voice_label) or "njiyun"
+            if cid:
+                char_voice[cid] = clova_id
+
+        # quote -> (speaker_id, tone) 매핑
+        quote_to_meta = {}
+        for d in dialogue_map or []:
+            q = (d.get("quote") or "").strip()
+            sid = d.get("speaker_id")
+            tone = (d.get("tone") or "").strip()
+            if q:
+                quote_to_meta[q] = (sid, tone)
+
+        def _lookup_quote(quote):
+            """quote에 맞는 (speaker_id, tone) 찾기. exact → substring 순."""
+            meta = quote_to_meta.get(quote)
+            if meta:
+                return meta
+            for q, m in quote_to_meta.items():
+                if quote in q or q in quote:
+                    return m
+            return (None, "")
+
+        def _tone_to_prompt(tone):
+            if not tone:
+                return ""
+            return (
+                f"Roleplay with a '{tone}' tone. "
+                f"Speak the following Korean text naturally with matching emotion."
+            )
+
+        output_dir = Path(output_dir)
+        audio_paths = []
+        quote_pattern = r'[“"]([^“”"]*?)[”"]'
+
+        for i, scene in enumerate(scripts):
+            text = (scene.get("text") or "").strip()
+            narr_spk = scene.get("speaker", "narrator")
+            if not text or narr_spk == "none":
+                audio_paths.append(None)
+                continue
+
+            # (text, speaker, style_prompt) 세그먼트 빌드
+            segments = []
+            last_end = 0
+            for m in re.finditer(quote_pattern, text):
+                if m.start() > last_end:
+                    narr = text[last_end:m.start()].strip()
+                    if narr:
+                        segments.append((narr, narr_spk, ""))
+                quote = m.group(1).strip()
+                if quote:
+                    spk_id, tone = _lookup_quote(quote)
+                    spk = char_voice.get(spk_id, narr_spk) if spk_id else narr_spk
+                    segments.append((quote, spk, _tone_to_prompt(tone)))
+                last_end = m.end()
+            if last_end < len(text):
+                tail = text[last_end:].strip()
+                if tail:
+                    segments.append((tail, narr_spk, ""))
+            if not segments:
+                segments.append((text, narr_spk, ""))
+
+            out_path = output_dir / f"clip_{i:02d}_{uid}.mp3"
+
+            if len(segments) == 1:
+                seg_text, seg_spk, seg_prompt = segments[0]
+                ok = text_to_speech(
+                    seg_text, str(out_path), speaker=seg_spk,
+                    engine=MODE_A_TTS_ENGINE, style_prompt=seg_prompt,
+                )
+                audio_paths.append(str(out_path) if ok and out_path.exists() else None)
+                continue
+
+            temp_paths = []
+            for j, (seg_text, seg_spk, seg_prompt) in enumerate(segments):
+                tmp = output_dir / f"clip_{i:02d}_{uid}_seg{j:02d}.mp3"
+                if text_to_speech(
+                    seg_text, str(tmp), speaker=seg_spk,
+                    engine=MODE_A_TTS_ENGINE, style_prompt=seg_prompt,
+                ) and tmp.exists():
+                    temp_paths.append(str(tmp))
+
+            if not temp_paths:
+                audio_paths.append(None)
+                continue
+            if len(temp_paths) == 1:
+                shutil.move(temp_paths[0], str(out_path))
+            else:
+                concat_audio_files(temp_paths, str(out_path))
+                for tp in temp_paths:
+                    Path(tp).unlink(missing_ok=True)
+            audio_paths.append(str(out_path) if out_path.exists() else None)
+
+        return audio_paths
 
     # --------------------------------
     # ① 삽화 선택 (텍스트와 함께)
@@ -405,6 +517,186 @@ if mode == "이미지 선택 기반 제작":
         st.session_state.step2_audio = None   # 오디오 경로 및 길이 [{"path":..., "duration":...}]
     if "step3_final_video" not in st.session_state:
         st.session_state.step3_final_video = None  # 최종 영상 경로
+    if "mode_a_characters" not in st.session_state:
+        st.session_state.mode_a_characters = None  # {"characters":[...], "dialogue_map":[...]}
+
+    _has_chars = bool((st.session_state.mode_a_characters or {}).get("characters"))
+
+    # --------------------------------
+    # 🎙️ TTS 보이스 모드 (큰 결정: 어떤 결과를 원하는지)
+    # --------------------------------
+    st.divider()
+    st.markdown("#### 🎙️ TTS 보이스 모드")
+    _voice_mode_opts = [
+        "캐릭터별 보이스 사용 (분석 결과 활용)",
+        "단일 narrator로 모두 읽기",
+    ]
+    # 위젯 key가 없으면 기본값으로 초기화. index= 인자는 일부러 빼서 충돌 방지.
+    if st.session_state.get("mode_a_voice_mode_widget") not in _voice_mode_opts:
+        st.session_state.mode_a_voice_mode_widget = _voice_mode_opts[1]
+
+    st.radio(
+        "어떤 방식으로 TTS를 합성할까요?",
+        _voice_mode_opts,
+        horizontal=True,
+        key="mode_a_voice_mode_widget",
+    )
+
+    _selected_chars_mode = st.session_state.mode_a_voice_mode_widget.startswith("캐릭터별")
+    if _selected_chars_mode and not _has_chars:
+        st.warning("⚠️ 아래 🎭 캐릭터 분석을 실행해야 적용됩니다. 분석을 안 하면 자동으로 단일 narrator로 합성됩니다.")
+    elif _selected_chars_mode and _has_chars:
+        st.caption("✅ 분석된 캐릭터 정보로 따옴표 안 대사를 각자 다른 보이스로 합성합니다.")
+    else:
+        st.caption("🔇 모든 텍스트를 단일 narrator 보이스로 합성합니다. (캐릭터 분석 결과를 무시)")
+
+    # --------------------------------
+    # 🎭 캐릭터 분석 (선택)
+    # --------------------------------
+    st.divider()
+    st.markdown("#### 🎭 캐릭터 분석 (선택)")
+    st.caption(
+        "실행하면 책 속 등장인물을 AI가 분석해, 따옴표 안 대사를 캐릭터별 다른 보이스로 합성합니다. "
+        "실행 안 하면 모든 텍스트를 단일 narrator로 읽습니다."
+    )
+
+    btn_label = "🔄 캐릭터 다시 분석" if _has_chars else "🎭 캐릭터 분석 실행"
+    btn_type = "secondary" if _has_chars else "primary"
+
+    if st.button(btn_label, key="mode_a_char_analysis_btn", type=btn_type):
+        full_text = txt_file.read_text(encoding="utf-8") if txt_file.exists() else ""
+        if not full_text:
+            st.error("책 txt 파일을 읽을 수 없습니다.")
+        else:
+            with st.spinner("등장인물 분석 중... (5~15초)"):
+                try:
+                    result = b_text_based.analyze_characters_and_speakers(client, full_text)
+                    for c in result.get("characters", []):
+                        vt = c.get("voice_type", "narrator")
+                        c["voice_label"] = b_text_based.GPT_VOICE_TO_UI_LABEL.get(vt, "🎙️ 나레이터")
+                    st.session_state.mode_a_characters = result
+                    log_event("modeA_char_analysis_done", {
+                        "characters": result.get("characters", []),
+                        "dialogue_count": len(result.get("dialogue_map", [])),
+                    })
+                    st.success(f"✅ {len(result.get('characters', []))}명의 캐릭터를 찾았습니다.")
+                    st.rerun()
+                except Exception as e:
+                    st.error(f"분석 실패: {e}")
+
+    if _has_chars:
+        chars_data = st.session_state.mode_a_characters.get("characters", [])
+        # 안전장치: voice_label이 새 VOICE_PRESETS에 없으면 기본값으로 복구
+        for c in chars_data:
+            if c.get("voice_label") not in b_text_based.VOICE_PRESETS:
+                c["voice_label"] = b_text_based.GPT_VOICE_TO_UI_LABEL.get(
+                    c.get("voice_type", "narrator"), "🎙️ 나레이터"
+                )
+
+        st.markdown("##### 🎙️ 캐릭터 프로필 (목소리 지정)")
+        edited_chars = st.data_editor(
+            chars_data,
+            column_order=["id", "name", "voice_label"],
+            column_config={
+                "id": st.column_config.TextColumn("ID", disabled=True, width="small"),
+                "name": st.column_config.TextColumn("이름", width="medium"),
+                "voice_label": st.column_config.SelectboxColumn(
+                    "🎙️ 지정 목소리",
+                    options=list(b_text_based.VOICE_PRESETS.keys()),
+                    width="medium",
+                    required=True,
+                    help="이 캐릭터의 대사를 읽을 보이스를 선택하세요.",
+                ),
+            },
+            num_rows="fixed",
+            use_container_width=True,
+            key="mode_a_char_editor",
+        )
+        st.session_state.mode_a_characters["characters"] = edited_chars
+
+        # 대사별 톤 프롬프트 에디터 - 선택한 페이지의 대사만 노출
+        all_dialogues = st.session_state.mode_a_characters.get("dialogue_map", []) or []
+        for d in all_dialogues:
+            d.setdefault("tone", "")
+
+        # 선택한 이미지에서 페이지 번호 추출
+        _name_by_id = {c.get("id"): c.get("name", "") for c in edited_chars}
+        _selected_page_nums = set()
+        for _img_name in st.session_state.selected_pages:
+            for _pat in (r"page_(\d+)", r"#(\d+)", r"(\d+)\.(?:png|jpg|jpeg|webp)$"):
+                _m = re.search(_pat, _img_name, re.IGNORECASE)
+                if _m:
+                    _selected_page_nums.add(int(_m.group(1)))
+                    break
+
+        # 디스플레이용: quote 기준 dedup. 같은 대사가 여러 페이지에 걸쳐 있으면 한 행으로 합침.
+        unique_view = []
+        seen_quotes = set()
+        for d in all_dialogues:
+            if d.get("page_num") not in _selected_page_nums:
+                continue
+            quote = (d.get("quote") or "").strip()
+            if not quote or quote in seen_quotes:
+                continue
+            seen_quotes.add(quote)
+            # 이 quote가 선택된 페이지 중 어디에 등장하는지 모두 수집
+            pages = sorted({
+                d2.get("page_num") for d2 in all_dialogues
+                if (d2.get("quote") or "").strip() == quote
+                and d2.get("page_num") in _selected_page_nums
+            })
+            # 기존 톤(같은 quote 항목 중 가장 먼저 채워진 비어있지 않은 값) 가져오기
+            existing_tone = ""
+            for d2 in all_dialogues:
+                if (d2.get("quote") or "").strip() == quote and (d2.get("tone") or "").strip():
+                    existing_tone = d2["tone"]
+                    break
+            unique_view.append({
+                "pages_display": ", ".join(str(p) for p in pages),
+                "speaker_name": _name_by_id.get(d.get("speaker_id"), d.get("speaker_id", "")),
+                "quote": quote,
+                "tone": existing_tone,
+            })
+
+        if unique_view:
+            st.markdown("##### 💬 대사별 톤/말투 지시 (선택)")
+            st.caption(
+                f"선택한 페이지의 고유한 대사 {len(unique_view)}개만 표시됩니다. "
+                "펼침면처럼 같은 대사가 여러 페이지에 걸쳐 있으면 한 줄로 합쳐서 보여줘요. "
+                "비워두면 캐릭터 기본 보이스로 읽고, 적으면 GPT TTS instructions로 전달됩니다."
+            )
+            edited_view = st.data_editor(
+                unique_view,
+                column_order=["pages_display", "speaker_name", "quote", "tone"],
+                column_config={
+                    "pages_display": st.column_config.TextColumn("Pages", disabled=True, width="small"),
+                    "speaker_name": st.column_config.TextColumn("화자", disabled=True, width="small"),
+                    "quote": st.column_config.TextColumn("대사", disabled=True, width="large"),
+                    "tone": st.column_config.TextColumn(
+                        "톤/말투 지시 (선택)",
+                        width="medium",
+                        help="예: 흥분된 목소리, 슬프게 흐느끼며, 무서운 분위기로",
+                    ),
+                },
+                num_rows="fixed",
+                use_container_width=True,
+                hide_index=True,
+                key="mode_a_dialogue_editor",
+            )
+            # 편집한 톤을 quote 기준으로 dialogue_map의 모든 동일 항목에 머지
+            _tone_by_quote = {
+                (r.get("quote") or "").strip(): (r.get("tone") or "").strip()
+                for r in edited_view
+            }
+            for d in all_dialogues:
+                q = (d.get("quote") or "").strip()
+                if q in _tone_by_quote:
+                    d["tone"] = _tone_by_quote[q]
+            st.session_state.mode_a_characters["dialogue_map"] = all_dialogues
+        elif not _selected_page_nums:
+            st.caption("📝 위에서 페이지를 먼저 선택하면 그 페이지의 대사가 여기 나옵니다.")
+        else:
+            st.caption("💬 선택한 페이지에는 따옴표 안 대사가 식별되지 않았어요.")
 
     # --------------------------------
     # ③ 실행 파트 (3단계 프로세스)
@@ -429,15 +721,21 @@ if mode == "이미지 선택 기반 제작":
 
         # 선택된 페이지의 원문 텍스트를 그대로 자막으로 사용. 화자는 narrator 기본값,
         # 텍스트 없는 페이지는 speaker="none"으로 TTS 스킵.
+        # 펼침면 dedupe: 직전 장면과 텍스트가 같으면 자막+오디오 모두 비움 (이미지만 노출).
         subtitle_data = []
         page_texts = []
+        prev_text = ""
         for name in st.session_state.selected_pages:
             text = extract_text_for_image(name, txt_file)
             page_texts.append((name, text))
-            if text:
-                subtitle_data.append({"text": text, "speaker": "narrator"})
-            else:
+            if not text:
                 subtitle_data.append({"text": "", "speaker": "none"})
+            elif text == prev_text:
+                # 직전 장면과 동일 → dedup. 이미지만 보여주고 자막/오디오는 생략.
+                subtitle_data.append({"text": "", "speaker": "none", "_dedupe_of_prev": True})
+            else:
+                subtitle_data.append({"text": text, "speaker": "narrator"})
+                prev_text = text
 
         st.session_state.raw_texts = page_texts
         st.session_state.step1_scripts = subtitle_data
@@ -479,6 +777,9 @@ if mode == "이미지 선택 기반 제작":
                 img_name = st.session_state.selected_pages[i]
                 
                 st.markdown(f"**장면 {i+1}: {img_name}**")
+                # 펼침면 dedup 안내 (직전 장면과 동일한 텍스트면 자동으로 무음 처리됨)
+                if item.get("_dedupe_of_prev") and not item.get("text"):
+                    st.caption("↳ 이전 장면과 동일한 텍스트, 자막·오디오 자동 생략됨 (이미지만 노출). 다른 텍스트로 바꾸려면 아래 입력창에 직접 적어주세요.")
                 col_img, col_text, col_spk = st.columns([1, 3, 1])
                 
                 with col_img:
@@ -498,19 +799,28 @@ if mode == "이미지 선택 기반 제작":
                 with col_spk:
                     # 화자 수정
                     speakers_list = ["narrator", "child_male", "child_female", "adult_male", "adult_female", "elder_male", "elder_female", "young_male", "young_female", "animal", "none"]
-                    
+
                     # 기존 화자가 목록에 없으면 추가
                     current_spk = item["speaker"]
                     if current_spk not in speakers_list:
                         speakers_list.append(current_spk)
-                        
+
                     new_speaker = st.selectbox(
                         label="화자 (Speaker)",
                         options=speakers_list,
                         index=speakers_list.index(current_spk),
                         key=f"script_spk_{i}"
                     )
-                
+
+                with st.expander("⚙️ Runway 프롬프트 (이 장면용)", expanded=False):
+                    st.text_input(
+                        label="이 장면에만 적용할 프롬프트",
+                        value=item.get("runway_prompt", ""),
+                        placeholder="비우면 ② 글로벌 프롬프트 사용. 예: child runs through dark forest, scared",
+                        key=f"script_rw_prompt_{i}",
+                        help="입력하면 이 장면만 이 프롬프트로 Runway 영상을 생성합니다.",
+                    )
+
                 st.divider()
 
         # =========================================================
@@ -528,9 +838,13 @@ if mode == "이미지 선택 기반 제작":
             # UI 입력값(수정된 값)을 읽어서 리스트 재구성
             final_scripts = []
             for i in range(len(st.session_state.step1_scripts)):
+                _prev = st.session_state.step1_scripts[i]
                 final_scripts.append({
                     "text": st.session_state[f"script_text_{i}"],
-                    "speaker": st.session_state[f"script_spk_{i}"]
+                    "speaker": st.session_state[f"script_spk_{i}"],
+                    "runway_prompt": st.session_state.get(f"script_rw_prompt_{i}", "").strip(),
+                    # dedup 플래그는 보존(이후 텍스트가 비어있고 플래그가 있으면 그대로 무음)
+                    "_dedupe_of_prev": _prev.get("_dedupe_of_prev", False),
                 })
 
             # 수정된 대본 업데이트
@@ -542,15 +856,24 @@ if mode == "이미지 선택 기반 제작":
             })
 
             st.info("🎙️ TTS 음성을 생성하고 길이를 측정합니다...")
-            
-            # TTS 생성 (Mode A는 GPT 엔진으로 고정. Clova 키 복구 후 "clova"로 바꾸면 됨)
-            MODE_A_TTS_ENGINE = "gpt"
-            texts = [s["text"] for s in final_scripts]
-            speakers = [s["speaker"] for s in final_scripts]
 
-            audio_paths = generate_audio_for_subtitles(
-                texts, OUT, uid, speakers=speakers, engine=MODE_A_TTS_ENGINE
-            )
+            # 보이스 모드(라디오)에 따라 합성 방식 결정
+            _char_data = st.session_state.get("mode_a_characters") or {}
+            _chars = _char_data.get("characters") or []
+            _dialogues = _char_data.get("dialogue_map") or []
+            _voice_mode = st.session_state.get("mode_a_voice_mode_widget", "")
+            _use_chars = bool(_chars) and _voice_mode.startswith("캐릭터별")
+
+            if _use_chars:
+                audio_paths = _generate_mode_a_audio_with_characters(
+                    final_scripts, _chars, _dialogues, OUT, uid
+                )
+            else:
+                texts = [s["text"] for s in final_scripts]
+                speakers = [s["speaker"] for s in final_scripts]
+                audio_paths = generate_audio_for_subtitles(
+                    texts, OUT, uid, speakers=speakers, engine=MODE_A_TTS_ENGINE
+                )
             
             # 길이 측정
             audio_data = []
@@ -626,9 +949,17 @@ if mode == "이미지 선택 기반 제작":
                 else:
                     runway_dur = 10
                 
+                # 장면별 Runway 프롬프트 우선, 없으면 글로벌 PROMPT
+                _scene_rw_prompt = ""
+                try:
+                    _scene_rw_prompt = (st.session_state.step1_scripts[i].get("runway_prompt") or "").strip()
+                except (IndexError, KeyError, AttributeError):
+                    _scene_rw_prompt = ""
+                _runway_prompt = _scene_rw_prompt or PROMPT
+
                 # Runway 호출
                 try:
-                    result = generate_video_from_image(str(img_path), PROMPT, runway_dur)
+                    result = generate_video_from_image(str(img_path), _runway_prompt, runway_dur)
                     video_url = extract_video_url(result)
                     
                     raw_path = OUT / f"clip_{i:02d}_{uid}_raw.mp4"
