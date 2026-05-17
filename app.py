@@ -75,7 +75,14 @@ render_sidebar_panel()
 # --------------------------------
 BASE_DIR = Path(__file__).resolve().parent
 CHARACTER_DIR = BASE_DIR / "character"
-TXT_DIR = CHARACTER_DIR / "txt" / "048"
+TXT_ROOT = CHARACTER_DIR / "txt"  # 하위에 048/, 049/, 050/ 같은 월령 폴더가 있음
+
+
+def resolve_txt_path(book_name: str) -> Path:
+    """책 이름에서 월령(48개월/49개월/50개월)을 추출해 해당 txt 파일 경로를 반환."""
+    m = re.search(r"(\d+)개월", book_name)
+    age_folder = f"{int(m.group(1)):03d}" if m else "048"
+    return TXT_ROOT / age_folder / f"{book_name}.txt"
 
 # 사용자별 출력 폴더 (모든 결과물이 여기로 저장됨)
 from session_logger import get_session_dir
@@ -94,9 +101,11 @@ if "current_book" not in st.session_state:
 # --------------------------------
 #  책 선택
 # --------------------------------
-# character 폴더에서 책 목록 가져오기 (txt, json 폴더 제외)
+# character 폴더에서 책 목록 가져오기 (txt/json 폴더 + 표지 책 제외)
 book_folders = [f.name for f in CHARACTER_DIR.iterdir()
-                if f.is_dir() and f.name not in ["txt", "json"]]
+                if f.is_dir()
+                and f.name not in ["txt", "json"]
+                and "_표지_" not in f.name]
 book_folders = sorted(book_folders)
 
 if not book_folders:
@@ -114,7 +123,7 @@ if st.session_state.current_book != selected_book:
 
 # 이미지 폴더와 txt 파일 자동 설정
 folder = CHARACTER_DIR / selected_book
-txt_file = TXT_DIR / f"{selected_book}.txt"
+txt_file = resolve_txt_path(selected_book)
 
 if not folder.exists():
     st.error(f"이미지 폴더를 찾을 수 없습니다: {folder}")
@@ -166,7 +175,17 @@ if "current_mode" not in st.session_state:
 if st.session_state.current_mode != mode:
     st.session_state.current_mode = mode
     log_event("mode_selected", {"mode": mode})
-    # 여기에 모드 변경 시 초기화할 변수들 리셋 (예: loaded_images 등)
+    # 모드 간 leak 방지: 한쪽 모드에서 만든 산출물이 다른 모드 화면에 끌려오지 않도록 리셋
+    _MODE_STATE_KEYS = (
+        # Mode A 산출물
+        "step1_scripts", "step2_audio", "step3_final_video", "raw_texts", "proc_uid",
+        # Mode B 산출물
+        "track_b_analysis", "track_b_characters", "track_b_segments", "track_b_step",
+        "track_b_audio", "track_b_full_audio", "track_b_matches", "track_b_candidates",
+        "track_b_video_results", "track_b_preview_video",
+    )
+    for _k in _MODE_STATE_KEYS:
+        st.session_state.pop(_k, None)
     st.session_state.selected_pages = []
     st.rerun()
 
@@ -176,16 +195,50 @@ if st.session_state.current_mode != mode:
 if mode == "이미지 선택 기반 제작":
     st.info("🖼️ 마음에 드는 삽화를 먼저 고르면, AI가 이야기를 이어줍니다.")
     # --------------------------------
-    # ① 삽화 선택
+    # TXT 매칭 함수 (삽화 선택과 대본 생성 양쪽에서 사용)
+    # --------------------------------
+    def extract_text_for_image(page_name: str, txt_path: Path):
+        """
+        이미지 이름에서 페이지 번호를 추출하고, txt 파일 내 해당 페이지의 텍스트를 반환.
+        지원하는 파일명 패턴:
+          - page_006.png  → 6
+          - ..._#07.png   → 7  (리딩토탈 시리즈)
+          - ..._007.png   → 7  (확장자 직전 숫자)
+        """
+        if not txt_path.exists():
+            return ""
+
+        # 페이지 번호 추출 (b_text_based.extract_page_num_from_filename과 동일 패턴)
+        page_num = None
+        for pat in (r"page_(\d+)", r"#(\d+)", r"(\d+)\.(?:png|jpg|jpeg|webp)$"):
+            m = re.search(pat, page_name, re.IGNORECASE)
+            if m:
+                page_num = int(m.group(1))
+                break
+        if page_num is None:
+            return ""
+
+        txt_content = txt_path.read_text(encoding="utf-8")
+
+        # --- Page N --- 형식에서 해당 페이지 텍스트 추출
+        pattern = rf"--- Page {page_num} ---\n(.*?)(?=--- Page \d+ ---|$)"
+        match = re.search(pattern, txt_content, re.DOTALL)
+        if match:
+            return match.group(1).strip()
+        return ""
+
+    # --------------------------------
+    # ① 삽화 선택 (텍스트와 함께)
     # --------------------------------
     st.subheader("① 사용할 삽화 선택")
+    st.caption("각 페이지의 그림과 텍스트를 함께 보고 영상에 쓸 장면을 고르세요.")
 
     with st.form("select_form"):
-        cols = st.columns(6)
+        cols = st.columns(4)
         selected = list(st.session_state.selected_pages)
 
         for i, (name, img) in enumerate(images):
-            with cols[i % 6]:
+            with cols[i % 4]:
                 st.image(img, use_container_width=True)
                 if st.checkbox(name, name in selected, key=f"chk_{name}"):
                     if name not in selected:
@@ -193,6 +246,33 @@ if mode == "이미지 선택 기반 제작":
                 else:
                     if name in selected:
                         selected.remove(name)
+
+                # 페이지 텍스트 미리보기 — 고정 높이 + 내부 스크롤로 그리드 정렬 유지
+                _page_text = extract_text_for_image(name, txt_file)
+                if _page_text:
+                    _escaped = (
+                        _page_text
+                        .replace("&", "&amp;")
+                        .replace("<", "&lt;")
+                        .replace(">", "&gt;")
+                        .replace("\n", "<br>")
+                    )
+                    st.markdown(
+                        f'<div style="height: 110px; overflow-y: auto; padding: 8px 10px; '
+                        f'background-color: rgba(250,250,250,0.5); border-radius: 6px; '
+                        f'font-size: 0.85em; line-height: 1.45; color: #444; '
+                        f'margin-bottom: 12px;">{_escaped}</div>',
+                        unsafe_allow_html=True,
+                    )
+                else:
+                    st.markdown(
+                        '<div style="height: 110px; padding: 8px 10px; display: flex; '
+                        'align-items: center; justify-content: center; '
+                        'background-color: rgba(250,250,250,0.3); border-radius: 6px; '
+                        'color: #999; font-style: italic; font-size: 0.85em; '
+                        'margin-bottom: 12px;">(그림만 있는 페이지)</div>',
+                        unsafe_allow_html=True,
+                    )
 
         if st.form_submit_button(" 선택 확정", type="primary"):
             st.session_state.selected_pages = selected
@@ -314,200 +394,6 @@ if mode == "이미지 선택 기반 제작":
             use_bgm = False
 
     # --------------------------------
-    # TXT 매칭 함수
-    # --------------------------------
-    def extract_text_for_image(page_name: str, txt_path: Path):
-        """
-        이미지 이름(예: page_006.png)에서 페이지 번호를 추출하고,
-        txt 파일 내에서 해당 페이지(--- Page 6 ---)의 텍스트를 반환
-        """
-        if not txt_path.exists():
-            return ""
-
-        m = re.search(r"page_(\d+)", page_name)
-        if not m:
-            return ""
-        page_num = int(m.group(1))  # "006" -> 6
-
-        txt_content = txt_path.read_text(encoding="utf-8")
-
-        # --- Page N --- 형식에서 해당 페이지 텍스트 추출
-        pattern = rf"--- Page {page_num} ---\n(.*?)(?=--- Page \d+ ---|$)"
-        match = re.search(pattern, txt_content, re.DOTALL)
-        if match:
-            return match.group(1).strip()
-        return ""
-
-
-    # --------------------------------
-    # OpenAI로 예고편 자막 + 화자 생성
-    # --------------------------------
-    def generate_trailer_subtitles_with_speakers(page_texts: list[tuple[str, str]], duration_per_clip: int):
-        """
-        각 페이지의 텍스트를 받아서 예고편 스타일 자막 + 화자 생성
-        GPT가 문맥을 이해하고 적절한 화자를 배정함
-
-        Args:
-            page_texts: [(page_name, text), ...]
-            duration_per_clip: 각 클립의 길이(초)
-
-        Returns:
-            list of {"text": str, "speaker": str}
-        """
-        # 페이지별 내용 정리
-        content_info = "\n".join([
-            f"[장면 {i+1} - {name}]: {text[:200]}..."
-            if text and len(text) > 200
-            else f"[장면 {i+1} - {name}]: {text}" if text
-            else f"[장면 {i+1} - {name}]: (그림만 있는 페이지 - 자막 불필요)"
-            for i, (name, text) in enumerate(page_texts)
-        ])
-
-        num_scenes = len(page_texts)
-
-        prompt = f"""당신은 동화책 예고편 전문 작가입니다. 시청자가 "이 책 보고 싶다!"고 느끼게 만드세요.
-
-    ## 장면 정보 ({num_scenes}개)
-    {content_info}
-
-    ---
-
-    ## 예고편 자막 작성 규칙
-
-    ### 1. 기본 규칙
-    - 정확히 **{num_scenes}개** 자막 (장면당 1개, 순서 유지!)
-    - **그림만 있는 페이지** → text: "", speaker: "none"
-    - 자막 길이: **35~60자** (풍성하고 생동감 있게!)
-    - 말투: 동화책 읽어주는 느낌 (~했어요, ~이었답니다, ~였지요)
-
-    ### 2.  절대 금지 - 결말 스포일러!
-    -  "삼국 통일을 이뤘습니다" → 결말 노출!
-    -  "행복하게 살았답니다" → 해피엔딩 스포일러!
-    -  "문제가 해결되었어요" → 결과 공개!
-
-    ### 3.  마지막 자막은 반드시 궁금증 유발!
-    - "과연 원이는 왕건을 만날 수 있을까요?"
-    - "운명의 그 날, 무슨 일이 벌어질까요?"
-    - "위기에 빠진 주인공! 어떻게 될까요?"
-
-    ### 4. 자막 스타일 예시
-    나쁜 예: "무량수전에서 왕건을 만났어요." (너무 밋밋)
-    좋은 예: "천년고찰 무량수전, 그곳에서 운명적인 만남이 기다리고 있었어요!"
-
-    나쁜 예: "원이는 계단을 올랐습니다." (단순 설명)
-    좋은 예: "가파른 백팔 계단을 오르는 원이, 숨이 턱까지 차올랐지요!"
-
-    ---
-
-    ## 화자(speaker) 배정 - 핵심!
-
-    ### 핵심 원칙: 나레이션 vs 직접 대사
-
-    **narrator (내레이터)** - 다음 모든 경우:
-    - 상황 설명: "원이는 계단을 올랐어요."
-    - 캐릭터 행동 묘사: "설렘으로 가득찬 원이의 여정!"
-    - 배경 설명: "옛날 옛적에...", "어느 날 아침..."
-    - 감정 묘사: "원이는 가슴이 두근두근 뛰었어요."
-
-    **캐릭터 음성** - 오직 직접 대사(따옴표 안)만!
-    - child_male: 소년이 직접 말할 때 → "내가 할게요!"
-    - adult_male: 성인 남성이 직접 말할 때 → "가자, 원아!"
-    - elder_female: 할머니가 직접 말할 때 → "잘 다녀오렴"
-
-    ### 사용 가능한 화자 목록:
-    - **narrator**: 모든 나레이션/설명 (기본값!)
-    - **child_male**: 소년의 직접 대사 ("...")
-    - **child_female**: 소녀의 직접 대사
-    - **adult_male**: 성인 남성의 직접 대사
-    - **adult_female**: 성인 여성의 직접 대사
-    - **elder_female**: 할머니의 직접 대사
-    - **elder_male**: 할아버지의 직접 대사
-    - **young_female**: 젊은 여성의 직접 대사
-    - **young_male**: 젊은 남성의 직접 대사
-    - **animal**: 동물의 직접 대사
-    - **fairy**: 요정/마법사의 직접 대사
-    - **none**: 빈 자막 (그림만 있는 페이지)
-
-    ### 예시 (중요!):
-    - "원이는 숨을 헐떡이며 계단을 올랐어요." → **narrator** (상황 설명)
-    - "봉황산 숲길을 뛰어가는 원이!" → **narrator** (행동 묘사)
-    - "설렘으로 가득찬 원이의 여정이 시작되었어요." → **narrator** (나레이션)
-    - 원이가 "저도 같이 가도 될까요?"라고 말했어요 → **child_male** (직접 대사)
-    - "과연 어떻게 될까요?" → **narrator** (궁금증 유발)
-
-    ###  흔한 실수:
-    - "원이는 설레는 마음을 감출 수 없었어요." → narrator (O) / child_male (X)
-    - "가파른 계단을 오르는 원이!" → narrator (O) / child_male (X)
-
-    ---
-
-    ## JSON 응답 형식
-    {{
-    "subtitles": [
-        {{"text": "천년고찰 무량수전으로 향하는 길, 설렘으로 가득찬 원이의 여정이 시작되었어요!", "speaker": "narrator"}},
-        {{"text": "가파른 백팔 계단을 오르는 원이, 숨이 턱까지 차올랐지요!", "speaker": "narrator"}},
-        {{"text": "그때, 눈앞에 웅장한 무량수전이 나타났어요!", "speaker": "narrator"}},
-        {{"text": "그리고 그곳에서 운명처럼 만난 한 사람... 바로 왕건이었어요.", "speaker": "narrator"}},
-        {{"text": "과연 원이와 왕건의 만남은 어떤 이야기로 이어질까요?", "speaker": "narrator"}}
-    ]
-    }}
-    """
-
-        response = client.chat.completions.create(
-            model="gpt-5.2",  # GPT-5.2 for advanced context understanding (2025.12)
-            messages=[{"role": "user", "content": prompt}],
-            response_format={"type": "json_object"}
-        )
-
-        result = json.loads(response.choices[0].message.content)
-        subtitles = result.get("subtitles", [])
-
-        # 자막 개수가 장면 수와 다르면 조정
-        while len(subtitles) < num_scenes:
-            subtitles.append({"text": "", "speaker": "none"})
-        if len(subtitles) > num_scenes:
-            subtitles = subtitles[:num_scenes]
-
-        # 유효한 화자 목록 (검증용)
-        VALID_SPEAKERS = {
-            "narrator", "child", "child_male", "child_female",
-            "elder_female", "elder_male", "adult_female", "adult_male",
-            "young_female", "young_male", "animal", "fairy", "none"
-        }
-
-        # 각 항목이 dict인지 확인하고 정규화 + 검증
-        normalized = []
-        for item in subtitles:
-            if isinstance(item, dict):
-                text = item.get("text", "")
-                speaker = item.get("speaker", "narrator")
-
-                # 유효성 검증 - 잘못된 화자는 narrator로 폴백
-                if speaker not in VALID_SPEAKERS:
-                    print(f"⚠️ 예상치 못한 화자 '{speaker}' → narrator로 변경")
-                    speaker = "narrator"
-
-                normalized.append({"text": text, "speaker": speaker})
-            elif isinstance(item, str):
-                # 이전 형식 호환 (문자열만 있는 경우)
-                normalized.append({
-                    "text": item,
-                    "speaker": "narrator" if item else "none"
-                })
-            else:
-                normalized.append({"text": "", "speaker": "none"})
-
-        return normalized
-
-
-    # 하위 호환용 래퍼 (기존 코드 지원)
-    def generate_trailer_subtitles(page_texts: list[tuple[str, str]], duration_per_clip: int):
-        """기존 함수 호환 - 텍스트만 반환"""
-        results = generate_trailer_subtitles_with_speakers(page_texts, duration_per_clip)
-        return [item["text"] for item in results]
-
-
-    # --------------------------------
     # 🗂 Session State (3단계 데이터 저장용)
     # --------------------------------
     # 단계별 데이터를 저장할 공간을 초기화합니다.
@@ -527,12 +413,11 @@ if mode == "이미지 선택 기반 제작":
     st.subheader("③ 생성 프로세스")
 
     # =========================================================
-    # [STEP 1] 대본 초안 생성 (GPT)
+    # [STEP 1] 페이지 원문 그대로 자막으로 사용 (Mode A 정책: 원본 텍스트)
     # =========================================================
-    st.markdown("#### 1️⃣ 대본(Script) 생성 및 수정")
+    st.markdown("#### 1️⃣ 자막 불러오기 및 수정")
 
-    if st.button("1단계: AI 대본 초안 생성", type="primary"):
-        # 1. 고유 ID 생성
+    if st.button("1단계: 페이지 원문으로 자막 만들기", type="primary"):
         st.session_state.proc_uid = uuid.uuid4().hex[:8]
         log_event("modeA_step1_start", {
             "book": selected_book,
@@ -542,31 +427,28 @@ if mode == "이미지 선택 기반 제작":
             "bgm_volume": bgm_volume if use_bgm else None,
         })
 
-        st.info("📜 원본 텍스트를 분석하여 대본과 화자를 설정합니다...")
-
-        # 1-1. 텍스트 추출
+        # 선택된 페이지의 원문 텍스트를 그대로 자막으로 사용. 화자는 narrator 기본값,
+        # 텍스트 없는 페이지는 speaker="none"으로 TTS 스킵.
+        subtitle_data = []
         page_texts = []
         for name in st.session_state.selected_pages:
             text = extract_text_for_image(name, txt_file)
             page_texts.append((name, text))
+            if text:
+                subtitle_data.append({"text": text, "speaker": "narrator"})
+            else:
+                subtitle_data.append({"text": "", "speaker": "none"})
 
-        # 세션에 원본 텍스트 저장 (나중에 참고용)
         st.session_state.raw_texts = page_texts
-
-        # 1-2. OpenAI 대본 생성
-        subtitle_data = generate_trailer_subtitles_with_speakers(page_texts, DEFAULT_DURATION)
-
-        # 결과 저장
         st.session_state.step1_scripts = subtitle_data
 
-        # 사용자별 세션 폴더에 GPT 초안 그대로 기록
         try:
             with open(SESSION_DIR / f"modeA_step1_scripts_{st.session_state.proc_uid}.json", "w", encoding="utf-8") as _f:
                 import json as _json
                 _json.dump({
                     "book": selected_book,
                     "raw_texts": page_texts,
-                    "gpt_initial_scripts": subtitle_data,
+                    "initial_scripts": subtitle_data,
                 }, _f, ensure_ascii=False, indent=2)
         except Exception as _e:
             print(f"[log] step1 save failed: {_e}")
@@ -576,7 +458,6 @@ if mode == "이미지 선택 기반 제작":
             "scripts": subtitle_data,
         })
 
-        # 2, 3단계 데이터 초기화 (새로 생성했으므로)
         st.session_state.step2_audio = None
         st.rerun()
 
@@ -662,11 +543,14 @@ if mode == "이미지 선택 기반 제작":
 
             st.info("🎙️ TTS 음성을 생성하고 길이를 측정합니다...")
             
-            # TTS 생성
+            # TTS 생성 (Mode A는 GPT 엔진으로 고정. Clova 키 복구 후 "clova"로 바꾸면 됨)
+            MODE_A_TTS_ENGINE = "gpt"
             texts = [s["text"] for s in final_scripts]
             speakers = [s["speaker"] for s in final_scripts]
-            
-            audio_paths = generate_audio_for_subtitles(texts, OUT, uid, speakers=speakers)
+
+            audio_paths = generate_audio_for_subtitles(
+                texts, OUT, uid, speakers=speakers, engine=MODE_A_TTS_ENGINE
+            )
             
             # 길이 측정
             audio_data = []
