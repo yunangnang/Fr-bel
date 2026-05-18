@@ -409,11 +409,9 @@ if mode == "이미지 선택 기반 제작":
     DEFAULT_DURATION = st.slider("🖼 자막 없는 장면 기본 길이(초):", 3, 5, 5)
     st.info("💡 자막 있는 장면은 TTS 음성 길이에 맞춰 자동 조절됩니다.")
 
-    # --------------------------------
-    # 🎵 배경음악(BGM) 설정
-    # --------------------------------
-    st.divider()
-    st.subheader("🎵 배경음악(BGM) 설정")
+    # BGM 기본값 (실제 위젯은 Step 3 위에서 렌더됨)
+    use_bgm = False
+    bgm_volume = 0.15
 
     BGM_MAPPING = {
         "리딩토탈_48개월_내지_아기토끼포포의가족_최종 2_ISBN": "19",
@@ -487,23 +485,6 @@ if mode == "이미지 선택 기반 제작":
                 return bgm_file
 
         return None
-
-    use_bgm = st.checkbox("배경음악 사용 (페이지별 자동 매칭)", value=False)
-    bgm_volume = 0.15
-
-    if use_bgm:
-        if BGM_DIR.exists():
-            bgm_files = sorted([f.name for f in BGM_DIR.iterdir() if f.suffix.lower() in ['.wav', '.mp3', '.m4a']])
-            if bgm_files:
-                bgm_volume = st.slider("BGM 볼륨 (%):", 5, 50, 15) / 100.0
-                st.info(f"📂 BGM 폴더 발견: {len(bgm_files)}개 파일")
-                st.caption("각 페이지 번호에 맞는 BGM이 자동으로 선택됩니다.")
-            else:
-                st.warning(f"BGM 폴더에 오디오 파일이 없습니다: {BGM_DIR}")
-                use_bgm = False
-        else:
-            st.warning(f"BGM 폴더가 없습니다: {BGM_DIR}")
-            use_bgm = False
 
     # --------------------------------
     # 🗂 Session State (3단계 데이터 저장용)
@@ -660,11 +641,6 @@ if mode == "이미지 선택 기반 제작":
 
         if unique_view:
             st.markdown("##### 💬 대사별 톤/말투 지시 (선택)")
-            st.caption(
-                f"선택한 페이지의 고유한 대사 {len(unique_view)}개만 표시됩니다. "
-                "펼침면처럼 같은 대사가 여러 페이지에 걸쳐 있으면 한 줄로 합쳐서 보여줘요. "
-                "비워두면 캐릭터 기본 보이스로 읽고, 적으면 GPT TTS instructions로 전달됩니다."
-            )
             edited_view = st.data_editor(
                 unique_view,
                 column_order=["pages_display", "speaker_name", "quote", "tone"],
@@ -812,7 +788,7 @@ if mode == "이미지 선택 기반 제작":
                         key=f"script_spk_{i}"
                     )
 
-                with st.expander("⚙️ Runway 프롬프트 (이 장면용)", expanded=False):
+                with st.expander("🎬 캐릭터 움직임 설정", expanded=False):
                     st.text_input(
                         label="이 장면에만 적용할 프롬프트",
                         value=item.get("runway_prompt", ""),
@@ -917,9 +893,27 @@ if mode == "이미지 선택 기반 제작":
         # [STEP 3] Runway 영상 생성 및 최종 병합
         # =========================================================
         st.divider()
+        st.markdown("#### 🎵 배경음악(BGM) 설정")
+
+        use_bgm = st.checkbox("배경음악 사용 (페이지별 자동 매칭)", value=False)
+        if use_bgm:
+            if BGM_DIR.exists():
+                bgm_files = sorted([f.name for f in BGM_DIR.iterdir() if f.suffix.lower() in ['.wav', '.mp3', '.m4a']])
+                if bgm_files:
+                    bgm_volume = st.slider("BGM 볼륨 (%):", 5, 50, 15) / 100.0
+                    st.info(f"📂 BGM 폴더 발견: {len(bgm_files)}개 파일")
+                    st.caption("각 페이지 번호에 맞는 BGM이 자동으로 선택됩니다.")
+                else:
+                    st.warning(f"BGM 폴더에 오디오 파일이 없습니다: {BGM_DIR}")
+                    use_bgm = False
+            else:
+                st.warning(f"BGM 폴더가 없습니다: {BGM_DIR}")
+                use_bgm = False
+
+        st.divider()
         st.markdown("#### 3️⃣ Runway 영상 생성 (최종)")
         st.warning(" 이 버튼을 누르면 Runway 크레딧이 차감됩니다!")
-        
+
         if st.button("3단계: Runway 영상 생성 및 합치기", type="primary"):
             uid = st.session_state.proc_uid
             OUT = SESSION_DIR
