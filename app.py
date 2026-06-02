@@ -623,6 +623,9 @@ if mode == "이미지 선택 기반 제작":
         st.session_state.step3_final_video = None  # 최종 영상 경로
     if "mode_a_preview_video" not in st.session_state:
         st.session_state.mode_a_preview_video = None  # Runway 호출 전 정적 미리보기 경로
+    if "modeA_scene_videos" not in st.session_state:
+        # 장면별 Runway 결과 캐시. 각 항목: {"raw_path": str, "prompt_used": str, "runway_dur": int}
+        st.session_state.modeA_scene_videos = None
     if "mode_a_characters" not in st.session_state:
         st.session_state.mode_a_characters = None  # {"characters":[...], "dialogue_map":[...]}
 
@@ -1083,15 +1086,6 @@ if mode == "이미지 선택 기반 제작":
                         height=70,
                     )
 
-                with st.expander("🎬 캐릭터 움직임 설정", expanded=False):
-                    st.text_input(
-                        label="이 장면에만 적용할 프롬프트",
-                        value=item.get("runway_prompt", ""),
-                        placeholder="비우면 ② 글로벌 프롬프트 사용. 예: child runs through dark forest, scared",
-                        key=f"script_rw_prompt_{i}",
-                        help="입력하면 이 장면만 이 프롬프트로 Runway 영상을 생성합니다.",
-                    )
-
                 # 🙋 추가 문장 (워크숍 인터랙션) — 본문 안에 적어둔 새 문장을 여기에 다시
                 # 적고 화자만 다르게 지정하면, TTS가 그 부분만 지정 화자로 읽고 나머지는
                 # 원래대로 처리. 자막은 본문 그대로 사용되므로 시각적 흐름은 안 끊김.
@@ -1271,6 +1265,84 @@ if mode == "이미지 선택 기반 제작":
                     _dur = _scene_audio_info.get("duration") or 0
                     st.caption(f"⏱ {_dur:.1f}초")
                     st.audio(_scene_audio_info["path"])
+
+                # 🎬 캐릭터 움직임 설정 — TTS 아래로 이동. 그 장면 전용 Runway 프롬프트.
+                with st.expander("🎬 캐릭터 움직임 설정", expanded=False):
+                    st.text_input(
+                        label="이 장면에만 적용할 프롬프트",
+                        value=item.get("runway_prompt", ""),
+                        placeholder="비우면 ② 글로벌 프롬프트 사용. 예: child runs through dark forest, scared",
+                        key=f"script_rw_prompt_{i}",
+                        help="입력하면 이 장면만 이 프롬프트로 Runway 영상을 생성합니다.",
+                    )
+
+                # 🎬 이 장면 영상 — Runway 단발 호출로 결과 확인 후 마음에 안 들면 재생성.
+                _scene_vid_info = None
+                if (st.session_state.modeA_scene_videos
+                        and i < len(st.session_state.modeA_scene_videos)):
+                    _scene_vid_info = st.session_state.modeA_scene_videos[i]
+                _has_scene_vid = bool(
+                    _scene_vid_info and _scene_vid_info.get("raw_path")
+                    and os.path.exists(_scene_vid_info["raw_path"])
+                )
+                _rw_btn_label = (
+                    "🎬 이 장면 영상 다시 생성 (Runway)"
+                    if _has_scene_vid
+                    else "🎬 이 장면 영상 생성 (Runway)"
+                )
+                st.caption("⚠️ Runway 크레딧이 차감됩니다.")
+                if st.button(_rw_btn_label, key=f"scene_runway_btn_{i}"):
+                    _scene_rw_prompt = (st.session_state.get(f"script_rw_prompt_{i}") or "").strip()
+                    _final_prompt = _scene_rw_prompt or PROMPT
+
+                    # 길이는 TTS 결과 기준 (없으면 DEFAULT_DURATION)
+                    _audio_info_for_dur = (
+                        st.session_state.step2_audio[i]
+                        if (st.session_state.step2_audio and i < len(st.session_state.step2_audio))
+                        else None
+                    )
+                    _tts_dur = _audio_info_for_dur.get("duration") if _audio_info_for_dur else None
+                    if _tts_dur is None:
+                        _rw_dur = DEFAULT_DURATION
+                    elif _tts_dur <= 5.0:
+                        _rw_dur = 5
+                    else:
+                        _rw_dur = 10
+
+                    _img_path = folder / img_name
+                    _uid = st.session_state.proc_uid or uuid.uuid4().hex[:8]
+                    if not st.session_state.proc_uid:
+                        st.session_state.proc_uid = _uid
+
+                    try:
+                        with st.spinner(f"장면 {i+1} 영상 생성 중 (1~3분)..."):
+                            _result = generate_video_from_image(str(_img_path), _final_prompt, _rw_dur)
+                            _video_url = extract_video_url(_result)
+                            SESSION_DIR.mkdir(parents=True, exist_ok=True)
+                            _raw_path = SESSION_DIR / f"clip_{i:02d}_{_uid}_raw.mp4"
+                            download_video(_video_url, _raw_path)
+
+                        # 세션 캐시 업데이트 (길이 보정)
+                        if (st.session_state.modeA_scene_videos is None
+                                or len(st.session_state.modeA_scene_videos) != len(st.session_state.step1_scripts)):
+                            st.session_state.modeA_scene_videos = [None] * len(st.session_state.step1_scripts)
+                        st.session_state.modeA_scene_videos[i] = {
+                            "raw_path": str(_raw_path),
+                            "prompt_used": _final_prompt,
+                            "runway_dur": _rw_dur,
+                        }
+                        # 그 장면의 runway_prompt도 step1_scripts에 반영
+                        st.session_state.step1_scripts[i]["runway_prompt"] = _scene_rw_prompt
+                        log_event("modeA_scene_runway_done", {
+                            "scene": i, "prompt": _final_prompt, "runway_dur": _rw_dur,
+                        })
+                        st.rerun()
+                    except Exception as e:
+                        st.error(f"영상 생성 실패: {e}")
+
+                if _has_scene_vid:
+                    st.caption(f"🎬 프롬프트: {_scene_vid_info.get('prompt_used', '')[:80]}")
+                    st.video(_scene_vid_info["raw_path"])
 
                 st.divider()
 
@@ -1561,13 +1633,28 @@ if mode == "이미지 선택 기반 제작":
                     _scene_rw_prompt = ""
                 _runway_prompt = _scene_rw_prompt or PROMPT
 
-                # Runway 호출
+                # Step 1.5에서 장면별로 이미 Runway 돌렸으면 그 결과 재사용
+                # (사용자가 마음에 든 버전을 그대로 영상에 적용 — 크레딧 절약).
+                _cached_vid = None
+                if (st.session_state.modeA_scene_videos
+                        and i < len(st.session_state.modeA_scene_videos)):
+                    _cached_vid = st.session_state.modeA_scene_videos[i]
+                _cached_raw = (
+                    _cached_vid.get("raw_path")
+                    if _cached_vid and _cached_vid.get("raw_path")
+                    else None
+                )
+                _use_cache = bool(_cached_raw and os.path.exists(_cached_raw))
+
                 try:
-                    result = generate_video_from_image(str(img_path), _runway_prompt, runway_dur)
-                    video_url = extract_video_url(result)
-                    
-                    raw_path = OUT / f"clip_{i:02d}_{uid}_raw.mp4"
-                    download_video(video_url, raw_path)
+                    if _use_cache:
+                        raw_path = Path(_cached_raw)
+                        status_text.text(f"[{i+1}/{total}] '{name}' 캐시된 영상 재사용")
+                    else:
+                        result = generate_video_from_image(str(img_path), _runway_prompt, runway_dur)
+                        video_url = extract_video_url(result)
+                        raw_path = OUT / f"clip_{i:02d}_{uid}_raw.mp4"
+                        download_video(video_url, raw_path)
 
                     # 영상 길이를 TTS 길이에 정확히 맞춤. TTS가 영상보다 짧으면 trim,
                     # 길면 마지막 프레임 freeze-frame으로 extend (그래야 음성이 안 잘림).
