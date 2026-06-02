@@ -1482,121 +1482,29 @@ if mode == "이미지 선택 기반 제작":
                 use_bgm = False
 
         # =========================================================
-        # [STEP 2.6] Runway 호출 전 정적 미리보기 (이미지+자막+TTS+BGM)
+        # [STEP 3] 최종 영상 합성 — 장면별로 만든 Runway·TTS·BGM을 한 영상으로 묶음
         # =========================================================
         st.divider()
-        st.markdown("#### 🎬 미리보기 (Runway 호출 전)")
-        st.caption("선택한 페이지 그림을 그대로 깔고 자막·TTS·BGM을 합쳐 빠르게 확인합니다. Runway 크레딧은 쓰지 않아요.")
+        st.markdown("#### 3️⃣ 최종 영상 합성")
 
-        if st.button("🎞️ 정적 미리보기 생성", type="secondary"):
-            from moviepy.editor import ImageClip
-            import numpy as np
+        # 캐시된 장면별 Runway 개수 표시 → 사용자가 크레딧 차감 여부 미리 파악
+        _cached_count = 0
+        if st.session_state.modeA_scene_videos:
+            for _v in st.session_state.modeA_scene_videos:
+                if _v and _v.get("raw_path") and os.path.exists(_v.get("raw_path") or ""):
+                    _cached_count += 1
+        _total_scenes = len(st.session_state.selected_pages)
+        _missing = _total_scenes - _cached_count
 
-            uid = st.session_state.proc_uid
-            PREVIEW_DIR = SESSION_DIR / f"preview_modeA_{uid}"
-            PREVIEW_DIR.mkdir(parents=True, exist_ok=True)
+        if _missing == 0 and _total_scenes > 0:
+            st.success(f"✅ 모든 장면({_total_scenes}개) Runway 영상이 준비됨. 합성만 진행되어 크레딧 차감 없음.")
+        elif _missing > 0:
+            st.warning(
+                f"⚠️ {_total_scenes}개 장면 중 {_missing}개가 아직 Runway 미생성 상태예요. "
+                f"이 버튼을 누르면 미생성 장면만 새로 Runway 호출 (크레딧 차감)."
+            )
 
-            progress_bar = st.progress(0)
-            status_text = st.empty()
-            temp_clips = []
-            total = len(st.session_state.selected_pages)
-
-            log_event("modeA_preview_start", {
-                "uid": uid,
-                "scene_count": total,
-                "use_bgm": use_bgm,
-            })
-
-            try:
-                for i, name in enumerate(st.session_state.selected_pages):
-                    status_text.text(f"미리보기 생성 중: {i+1}/{total} ({name})")
-
-                    img_path = folder / name
-                    if not img_path.exists():
-                        continue
-
-                    audio_info = (st.session_state.step2_audio[i]
-                                  if i < len(st.session_state.step2_audio) else None)
-                    audio_path = audio_info["path"] if audio_info else None
-                    audio_dur = (audio_info["duration"]
-                                 if audio_info and audio_info.get("duration") else 3.0)
-
-                    sub_text = st.session_state.step1_scripts[i].get("text", "") or ""
-
-                    base_clip_path = PREVIEW_DIR / f"preview_base_{i:02d}.mp4"
-                    sub_clip_path = PREVIEW_DIR / f"preview_sub_{i:02d}.mp4"
-                    final_clip_path = PREVIEW_DIR / f"preview_final_{i:02d}.mp4"
-
-                    # 1. 페이지 그림 원본 로드 → 720x1280 세로 포맷으로 리사이즈/크롭
-                    pil_img = Image.open(img_path).convert("RGB")
-                    target_h = 1280
-                    ratio = target_h / pil_img.height
-                    pil_img = pil_img.resize(
-                        (int(pil_img.width * ratio), target_h), Image.LANCZOS
-                    )
-                    if pil_img.width >= 720:
-                        left = (pil_img.width - 720) // 2
-                        pil_img = pil_img.crop((left, 0, left + 720, target_h))
-
-                    base_clip = ImageClip(np.array(pil_img), duration=audio_dur)
-                    base_clip.fps = 24
-                    base_clip.write_videofile(
-                        str(base_clip_path),
-                        codec="libx264",
-                        audio=False,
-                        preset="ultrafast",
-                        logger=None,
-                    )
-                    base_clip.close()
-
-                    # 2. 자막 입히기 (Step 3과 동일한 함수)
-                    add_subtitle_to_video(
-                        str(base_clip_path), sub_text, str(sub_clip_path), scene_index=i
-                    )
-
-                    # 3. 오디오 (TTS + 선택적 BGM)
-                    if audio_path and os.path.exists(audio_path):
-                        page_bgm = get_bgm_for_page(name, BGM_DIR) if use_bgm else None
-                        if page_bgm and page_bgm.exists():
-                            add_audio_to_video(
-                                str(sub_clip_path), audio_path, str(final_clip_path),
-                                bgm_path=str(page_bgm), bgm_volume=bgm_volume,
-                            )
-                        else:
-                            add_audio_to_video(
-                                str(sub_clip_path), audio_path, str(final_clip_path)
-                            )
-                        temp_clips.append(str(final_clip_path))
-                    else:
-                        temp_clips.append(str(sub_clip_path))
-
-                    progress_bar.progress((i + 1) / total)
-
-                # 4. 전체 미리보기 병합
-                status_text.text("미리보기 병합 중...")
-                preview_path = PREVIEW_DIR / "modeA_preview.mp4"
-                concat_videos_with_audio(temp_clips, str(preview_path))
-
-                st.session_state.mode_a_preview_video = str(preview_path)
-                log_event("modeA_preview_done", {"preview_path": str(preview_path)})
-
-                progress_bar.progress(1.0)
-                status_text.empty()
-                st.rerun()
-            except Exception as e:
-                status_text.empty()
-                st.error(f"미리보기 생성 실패: {e}")
-                log_event("modeA_preview_error", {"error": str(e)})
-
-        if st.session_state.mode_a_preview_video and os.path.exists(st.session_state.mode_a_preview_video):
-            st.success(" 미리보기 준비 완료. 자막·오디오·BGM 싱크를 확인하고 문제 없으면 아래에서 Runway 생성으로 넘어가세요.")
-            st.video(st.session_state.mode_a_preview_video)
-
-        st.divider()
-        st.markdown("#### 3️⃣ Runway 영상 생성 (최종)")
-        st.warning(" 이 버튼을 누르면 Runway 크레딧이 차감됩니다!")
-
-        if st.button("3단계: Runway 영상 생성 및 합치기", type="primary"):
+        if st.button("🎬 최종 영상 합성", type="primary"):
             uid = st.session_state.proc_uid
             OUT = SESSION_DIR
             video_paths = []
