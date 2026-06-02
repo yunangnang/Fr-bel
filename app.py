@@ -1346,114 +1346,22 @@ if mode == "이미지 선택 기반 제작":
 
                 st.divider()
 
-        # =========================================================
-        # [STEP 2] TTS 일괄 생성 (선택) — 장면별 버튼이 주요 흐름, 여긴 fallback
-        # =========================================================
-        st.markdown("#### 2️⃣ TTS 일괄 생성 (선택)")
-        st.caption("위에서 장면별로 한 번에 생성하지 않고, 모든 장면을 한꺼번에 합성하고 싶을 때 사용.")
-
-        if st.button("🎯 모든 장면 TTS 일괄 생성", type="secondary"):
-            OUT = SESSION_DIR; OUT.mkdir(parents=True, exist_ok=True)
-            uid = st.session_state.proc_uid
-
-            # 수정 전 대본 (diff 분석용)
-            gpt_initial = list(st.session_state.step1_scripts)
-
-            # UI 입력값(수정된 값)을 읽어서 리스트 재구성.
-            # speaker 자동 복원: 펼침면 dedup으로 speaker="none"이었던 장면에 사용자가
-            # 텍스트를 다시 적었으면 자동으로 narrator로 전환해 silent skip 방지.
-            final_scripts = []
-            for i in range(len(st.session_state.step1_scripts)):
-                _prev = st.session_state.step1_scripts[i]
-                _text = (st.session_state[f"script_text_{i}"] or "").strip()
-                # 본문 화자는 캐릭터 프로필의 narrator로 통일. 텍스트가 비어 있으면
-                # "none"으로 두어 TTS·자막을 건너뜀 (펼침면 dedup·빈 페이지).
-                _spk = "narrator" if _text else (_prev.get("speaker") or "none")
-
-                # 추가 문장 위젯 값 수집. 빈 텍스트는 버림.
-                _extras_in = _prev.get("extra_lines", []) or []
-                _extras_out = []
-                for ei in range(len(_extras_in)):
-                    _ex_text = (st.session_state.get(f"extra_text_{i}_{ei}") or "").strip()
-                    _ex_spk = st.session_state.get(f"extra_spk_{i}_{ei}") or "narrator"
-                    _ex_tone = (st.session_state.get(f"extra_tone_{i}_{ei}") or "").strip()
-                    if _ex_text:
-                        _extras_out.append({"text": _ex_text, "speaker": _ex_spk, "tone": _ex_tone})
-
-                final_scripts.append({
-                    "text": st.session_state[f"script_text_{i}"],
-                    "speaker": _spk,
-                    "runway_prompt": st.session_state.get(f"script_rw_prompt_{i}", "").strip(),
-                    # dedup 플래그는 보존(이후 텍스트가 비어있고 플래그가 있으면 그대로 무음)
-                    "_dedupe_of_prev": _prev.get("_dedupe_of_prev", False),
-                    "extra_lines": _extras_out,
-                })
-
-            # 수정된 대본 업데이트
-            st.session_state.step1_scripts = final_scripts
-
-            log_event("modeA_step2_start", {
-                "gpt_initial_scripts": gpt_initial,
-                "edited_scripts": final_scripts,
-            })
-
-            st.info("🎙️ TTS 음성을 생성하고 길이를 측정합니다...")
-
-            # 보이스 모드(라디오)에 따라 합성 방식 결정.
-            # extras(추가 문장)가 하나라도 있으면 chunk 단위로 화자 분기가 필요해서
-            # character path로 강제 라우팅 (chars 비어있어도 narrator-only로 동작).
-            _char_data = st.session_state.get("mode_a_characters") or {}
-            _chars = _char_data.get("characters") or []
-            _dialogues = _char_data.get("dialogue_map") or []
-            _voice_mode = st.session_state.get("mode_a_voice_mode_widget", "")
-            _use_chars = bool(_chars) and _voice_mode.startswith("캐릭터별")
-            _has_extras = any((s.get("extra_lines") or []) for s in final_scripts)
-
-            if _use_chars or _has_extras:
-                audio_paths = _generate_mode_a_audio_with_characters(
-                    final_scripts, _chars, _dialogues, OUT, uid
-                )
-            else:
-                texts = [s["text"] for s in final_scripts]
-                speakers = [s["speaker"] for s in final_scripts]
-                audio_paths = generate_audio_for_subtitles(
-                    texts, OUT, uid, speakers=speakers, engine=MODE_A_TTS_ENGINE
-                )
-            
-            # 길이 측정
-            audio_data = []
-            for path in audio_paths:
-                if path and Path(path).exists():
-                    dur = get_audio_duration(str(path))
-                    audio_data.append({"path": path, "duration": dur})
-                else:
-                    audio_data.append({"path": None, "duration": None})
-                    
-            st.session_state.step2_audio = audio_data
-            log_event("modeA_step2_done", {
-                "durations": [d["duration"] for d in audio_data],
-                "files": [Path(d["path"]).name if d["path"] else None for d in audio_data],
-            })
-            st.rerun()
-
     # ---------------------------------------------------------
-    # [STEP 2.5] 오디오 검토 UI (수정된 코드)
+    # [STEP 2] 오디오 검토 (장면별 TTS가 하나라도 생성된 경우)
     # ---------------------------------------------------------
     if st.session_state.step2_audio is not None:
-        st.success(" 음성 생성이 완료되었습니다. 들어보고 이상 없으면 영상을 생성하세요.")
-
         # 장면별로 이미 위에서 들을 수 있으므로 디폴트는 접힘 — 전체 한눈에 보고 싶을 때만 펼침.
         with st.expander("🎧 음성 한눈에 보기 (전체 장면)", expanded=False):
             for i, audio_info in enumerate(st.session_state.step2_audio):
                 path = audio_info["path"]
                 dur = audio_info["duration"]
                 script = st.session_state.step1_scripts[i]["text"]
-                
+
                 # dur가 None일 경우 0.0으로 표시
                 dur_display = f"{dur:.1f}" if dur is not None else "0.0"
-                
+
                 st.write(f"**장면 {i+1}** ({dur_display}초) : {script}")
-                
+
                 if path and os.path.exists(path):
                     st.audio(path)
                 else:
