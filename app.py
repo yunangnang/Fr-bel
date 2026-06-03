@@ -1037,7 +1037,7 @@ if mode == "이미지 선택 기반 제작":
                 # 원래대로 처리. 자막은 본문 그대로 사용되므로 시각적 흐름은 안 끊김.
                 _existing_extras = item.get("extra_lines", []) or []
                 with st.expander(
-                    f"🙋 추가 문장 (워크숍 인터랙션) — {len(_existing_extras)}개",
+                    f"🙋 추가 대사 작성하기 — {len(_existing_extras)}개",
                     expanded=bool(_existing_extras),
                 ):
                     st.caption(
