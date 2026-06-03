@@ -288,11 +288,9 @@ if mode == "이미지 선택 기반 제작":
     # --------------------------------
     # 캐릭터 분석 기반 TTS (Mode B의 analyze_characters_and_speakers 결과를 활용)
     # --------------------------------
-    # TTS 엔진은 아래 "목소리 설정" 라디오에서 사용자가 고른 값을 사용.
-    # 디폴트는 Gemini Pro. 매 rerun마다 session_state에서 다시 읽으므로 closure도 자동 반영.
-    if st.session_state.get("mode_a_tts_engine") not in ("gemini-pro", "gpt"):
-        st.session_state.mode_a_tts_engine = "gemini-pro"
-    MODE_A_TTS_ENGINE = st.session_state.mode_a_tts_engine
+    # TTS 엔진은 Gemini 2.5 Pro로 고정 (워크숍에서 사용자 선택 옵션 제거).
+    st.session_state.mode_a_tts_engine = "gemini-pro"
+    MODE_A_TTS_ENGINE = "gemini-pro"
 
     def _generate_mode_a_audio_with_characters(scripts, characters, dialogue_map, output_dir, uid):
         """각 장면 텍스트를 따옴표 기준으로 분리, dialogue_map으로 화자/톤 식별,
@@ -661,67 +659,14 @@ if mode == "이미지 선택 기반 제작":
     ]
     _has_chars = bool(_analyzed_chars)
 
-    # --------------------------------
-    # 🎙️ 목소리 설정 (큰 결정: 어떤 결과를 원하는지)
-    # --------------------------------
-    st.divider()
-    st.markdown("#### 🎙️ 목소리 설정")
-    _voice_mode_opts = [
-        "캐릭터별 보이스 사용 (분석 결과 활용)",
-        "단일 narrator로 모두 읽기",
-    ]
-    # 위젯 key가 없으면 기본값으로 초기화. index= 인자는 일부러 빼서 충돌 방지.
-    if st.session_state.get("mode_a_voice_mode_widget") not in _voice_mode_opts:
-        st.session_state.mode_a_voice_mode_widget = _voice_mode_opts[1]
+    # 목소리 모드 / TTS 엔진은 워크숍 단순화를 위해 고정.
+    #   - voice_mode: "캐릭터별 보이스 사용" (분석 결과 활용)
+    #   - tts engine: Gemini 2.5 Pro (google-genai 경유, 톤/말투 prompt 반영)
+    st.session_state.mode_a_voice_mode_widget = "캐릭터별 보이스 사용 (분석 결과 활용)"
+    _selected_chars_mode = True
 
-    st.radio(
-        "어떤 방식으로 TTS를 합성할까요?",
-        _voice_mode_opts,
-        horizontal=True,
-        key="mode_a_voice_mode_widget",
-    )
-
-    _selected_chars_mode = st.session_state.mode_a_voice_mode_widget.startswith("캐릭터별")
-
-    # 모드 전환 감지: "캐릭터별..."로 막 전환됐고 분석 결과 없으면 자동으로 분석 실행
-    _prev_voice_mode = st.session_state.get("mode_a_voice_mode_prev")
-    st.session_state.mode_a_voice_mode_prev = st.session_state.mode_a_voice_mode_widget
-    _just_switched_to_chars = (
-        _selected_chars_mode
-        and _prev_voice_mode is not None
-        and _prev_voice_mode != st.session_state.mode_a_voice_mode_widget
-    )
-
-    if _selected_chars_mode and _has_chars:
-        st.caption("✅ 분석된 캐릭터 정보로 따옴표 안 대사를 각자 다른 보이스로 합성합니다.")
-    elif _selected_chars_mode and not _has_chars:
-        st.caption("🎭 아래에서 등장인물을 자동 분석합니다.")
-    else:
-        st.caption("🔇 모든 텍스트를 단일 narrator 보이스로 합성합니다. (캐릭터 분석 결과를 무시)")
-
-    # --------------------------------
-    # 🤖 TTS 엔진 선택 (Gemini vs GPT)
-    # --------------------------------
-    # 엔진별 특성:
-    #   - gemini-pro: ko-KR Chirp3-HD 보이스. 한국어 자연도 ↑. 톤/말투 prompt는 무시됨
-    #     (모델이 자연어 instruction을 해석하지 못해 누출 방지차 무시 처리).
-    #   - gpt: OpenAI gpt-4o-mini-tts. instructions 파라미터로 톤 prompt 반영. 자연도 보통.
-    # 사용자가 라디오로 바꾸면 위의 MODE_A_TTS_ENGINE 변수가 자동으로 따라감.
-    _engine_short = {
-        "gemini-pro": "Gemini 2.5 Pro",
-        "gpt": "GPT 4o-mini",
-    }
-    st.radio(
-        "🤖 TTS 엔진",
-        options=list(_engine_short.keys()),
-        format_func=lambda k: _engine_short[k],
-        horizontal=True,
-        key="mode_a_tts_engine",
-    )
-    if st.session_state.mode_a_tts_engine == "gemini-pro":
-        st.caption("✨ 한국어 자연도 ↑, '톤/말투 지시'도 prompt로 반영됩니다 (google-genai 경유).")
-    else:
-        st.caption("🎭 OpenAI 보이스. '톤/말투 지시'는 instructions 파라미터로 반영.")
+    # 캐릭터 분석 결과가 없으면 자동 분석 트리거 (첫 진입 시 1회).
+    _just_switched_to_chars = not _has_chars and not st.session_state.get("mode_a_char_analysis_attempted")
 
     def _merge_analysis_with_narrator(result, existing_narrator=None):
         """캐릭터 분석 결과에 narrator 항목을 첫 행에 보존."""
@@ -736,8 +681,9 @@ if mode == "이미지 선택 기반 제작":
         result["characters"] = chars
         return result
 
-    # 자동 캐릭터 분석 트리거
+    # 자동 캐릭터 분석 트리거 (첫 진입 시 1회만)
     if _just_switched_to_chars and not _has_chars:
+        st.session_state.mode_a_char_analysis_attempted = True
         full_text = txt_file.read_text(encoding="utf-8") if txt_file.exists() else ""
         if full_text:
             with st.spinner("등장인물 분석 중... (5~15초)"):
@@ -754,7 +700,7 @@ if mode == "이미지 선택 기반 제작":
                     log_event("modeA_char_analysis_done", {
                         "characters": result.get("characters", []),
                         "dialogue_count": len(result.get("dialogue_map", [])),
-                        "trigger": "auto_on_mode_switch",
+                        "trigger": "auto_on_entry",
                     })
                     st.success(f"✅ {len(result.get('characters', [])) - 1}명의 캐릭터를 찾았습니다.")
                     st.rerun()
