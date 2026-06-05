@@ -789,6 +789,10 @@ if mode == "이미지 선택 기반 제작":
 
             if _play_clicked:
                 _clova_id = b_text_based.VOICE_PRESETS.get(_picked) or "njiyun"
+                log_event("modeA_voice_sample_play", {
+                    "label": _picked,
+                    "voice_id": _clova_id,
+                })
                 _sample_dir = SESSION_DIR / "voice_samples"
                 _sample_dir.mkdir(parents=True, exist_ok=True)
                 _sample_path = _sample_dir / f"sample_{_clova_id}_{MODE_A_TTS_ENGINE}.mp3"
@@ -1120,8 +1124,25 @@ if mode == "이미지 선택 기반 제작":
                                         )
                                     if _ok and _prev_path.exists():
                                         st.session_state[f"extra_audio_{i}_{ei}"] = str(_prev_path)
+                                        _try_key = f"extra_prev_try_{i}_{ei}"
+                                        st.session_state[_try_key] = st.session_state.get(_try_key, 0) + 1
+                                        log_event("modeA_extra_preview", {
+                                            "scene": i, "extra_idx": ei,
+                                            "text": _pv_text,
+                                            "speaker": _pv_spk,
+                                            "tone": _pv_tone,
+                                            "attempt": st.session_state[_try_key],
+                                            "success": True,
+                                        })
                                     else:
                                         st.error("미리듣기 합성 실패")
+                                        log_event("modeA_extra_preview", {
+                                            "scene": i, "extra_idx": ei,
+                                            "text": _pv_text,
+                                            "speaker": _pv_spk,
+                                            "tone": _pv_tone,
+                                            "success": False,
+                                        })
 
                         # 미리듣기 결과 (있으면 표시)
                         _prev_audio = st.session_state.get(f"extra_audio_{i}_{ei}")
@@ -1150,6 +1171,7 @@ if mode == "이미지 선택 기반 제작":
 
                 if st.button(_btn_label, key=f"scene_tts_btn_{i}"):
                     _text = (st.session_state.get(f"script_text_{i}") or "").strip()
+                    _orig_text = (item.get("text") or "").strip()
                     _spk = "narrator" if _text else (item.get("speaker") or "none")
                     _scene_extras_out = []
                     for ei in range(len(_existing_extras)):
@@ -1158,6 +1180,25 @@ if mode == "이미지 선택 기반 제작":
                         _ex_tone = (st.session_state.get(f"extra_tone_{i}_{ei}") or "").strip()
                         if _ex_text:
                             _scene_extras_out.append({"text": _ex_text, "speaker": _ex_spk, "tone": _ex_tone})
+
+                    # 사용자 입력 스냅샷 — TTS 시도 시점에 무조건 기록 (성공/실패 무관)
+                    _char_snapshot = [
+                        {"id": c.get("id"), "name": c.get("name"),
+                         "voice_label": c.get("voice_label")}
+                        for c in (st.session_state.get("mode_a_characters") or {}).get("characters", []) or []
+                    ]
+                    _tts_try_key = f"scene_tts_try_{i}"
+                    st.session_state[_tts_try_key] = st.session_state.get(_tts_try_key, 0) + 1
+                    log_event("modeA_scene_tts_start", {
+                        "scene": i,
+                        "text_edited": _text,
+                        "text_original": _orig_text,
+                        "text_changed": _text != _orig_text,
+                        "runway_prompt": st.session_state.get(f"script_rw_prompt_{i}", "").strip(),
+                        "extras": _scene_extras_out,
+                        "character_voices": _char_snapshot,
+                        "attempt": st.session_state[_tts_try_key],
+                    })
 
                     _scene_dict = {
                         "text": _text,
@@ -1242,6 +1283,17 @@ if mode == "이미지 선택 기반 제작":
                 if st.button(_rw_btn_label, key=f"scene_runway_btn_{i}"):
                     _scene_rw_prompt = (st.session_state.get(f"script_rw_prompt_{i}") or "").strip()
                     _final_prompt = _scene_rw_prompt or PROMPT
+
+                    # 시행 카운터로 같은 장면의 재시도 횟수 추적
+                    _rw_try_key = f"scene_runway_try_{i}"
+                    st.session_state[_rw_try_key] = st.session_state.get(_rw_try_key, 0) + 1
+                    log_event("modeA_scene_runway_start", {
+                        "scene": i,
+                        "user_prompt": _scene_rw_prompt,
+                        "fallback_to_global": not _scene_rw_prompt,
+                        "final_prompt": _final_prompt,
+                        "attempt": st.session_state[_rw_try_key],
+                    })
 
                     # 길이는 TTS 결과 기준 (없으면 DEFAULT_DURATION)
                     _audio_info_for_dur = (
