@@ -3,7 +3,7 @@
 import streamlit as st
 from pathlib import Path
 from PIL import Image
-import uuid, re, os, json, shutil
+import uuid, re, os, json, shutil, time
 from openai import OpenAI
 from dotenv import load_dotenv
 
@@ -22,8 +22,7 @@ importlib.reload(tts_module)
 # 2. 함수 위치에 맞춰 Import 분리
 # (1) API 호출이 필요한 함수 -> tts_module에서 가져옴
 from tts_module import (
-    generate_audio_for_subtitles, 
-    text_to_speech  # 필요하다면 추가
+    text_to_speech,
 )
 
 # (2) 영상/오디오 파일 처리 유틸리티 -> tts_core에서 가져옴
@@ -441,6 +440,9 @@ if mode == "이미지 선택 기반 제작":
 
             temp_paths = []
             for j, (seg_text, seg_spk, seg_prompt) in enumerate(segments):
+                # 세그먼트 간 throttle — Gemini quota burst 방지
+                if j > 0:
+                    time.sleep(0.1)
                 tmp = output_dir / f"clip_{i:02d}_{uid}_seg{j:02d}.mp3"
                 if text_to_speech(
                     seg_text, str(tmp), speaker=seg_spk,

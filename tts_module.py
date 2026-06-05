@@ -396,6 +396,8 @@ def _generate_with_gemini(
                     pass
 
             _pcm_to_mp3(audio_bytes, sample_rate, output_path)
+            # 성공 후 짧은 sleep — 다음 호출과의 간격을 두어 burst RPM 완화
+            time.sleep(0.05)
             return True
 
         except Exception as e:
@@ -842,21 +844,11 @@ def generate_audio_for_subtitles(
     from concurrent.futures import ThreadPoolExecutor, as_completed
 
     audio_paths = [None] * len(subtitles)
-    # Gemini 엔진 감지 및 스로틀링(Throttling) 설정
+    # 워커 수: Gemini quota 429 폭주 방지차 항상 2로 캡.
+    # 절충안 — burst를 크게 줄이면서도 직렬 대비 ~2배 처리량 확보.
     is_gemini = "gemini" in engine.lower()
-    
-    # 1. Gemini 엔진 여부 확인
-    is_gemini = "gemini" in engine.lower()
-
-    # 2. 작업자(Worker) 수 및 병렬 설정 조정
-    if is_gemini:
-        # [Gemini] 429 에러 방지를 위해 동시 실행 수를 3개로 제한
-        # (기존에 5개였으면 3개로 줄임, parallel은 유지하되 속도 조절)
-        run_max_workers = 3 
-        print(f"ℹ️ [Gemini] 안정성을 위해 병렬 작업 수를 {run_max_workers}개로 제한합니다.")
-    else:
-        # [Clova/GPT] 기존 설정 그대로 (보통 5개) -> 딜레이 없이 빠르게 처리
-        run_max_workers = max_workers
+    run_max_workers = min(2, max_workers)
+    print(f"ℹ️ TTS 병렬 작업 수: {run_max_workers} (429 방지 cap)")
 
     # speakers 리스트가 있으면 사용, 없으면 단일 speaker로 채움
     if speakers is None:
