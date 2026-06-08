@@ -6,6 +6,7 @@ from pathlib import Path
 from PIL import Image
 import io, base64
 import os
+from session_logger import log_api_call, _summarize_text
 
 # .env 로드 (RUNWAYML_API_SECRET 필요)
 ENV_PATH = Path(__file__).resolve().parent / ".env"
@@ -29,15 +30,26 @@ def generate_video_from_image(image_path: str, prompt_text: str, duration=5, rat
     prompt_image = image_file_to_data_uri(image_path)
 
     try:
-        task = (
-            client.image_to_video.create(
-                model="gen4_turbo",
-                prompt_image=prompt_image,
-                prompt_text=prompt_text,
-                duration=duration,
-                ratio=ratio,
-            ).wait_for_task_output()
-        )
+        with log_api_call("runway_gen4", "gen4_turbo", {
+            "image": Path(image_path).name,
+            "prompt": _summarize_text(prompt_text),
+            "duration": duration,
+            "ratio": ratio,
+        }) as _ctx:
+            task = (
+                client.image_to_video.create(
+                    model="gen4_turbo",
+                    prompt_image=prompt_image,
+                    prompt_text=prompt_text,
+                    duration=duration,
+                    ratio=ratio,
+                ).wait_for_task_output()
+            )
+            # Runway는 토큰 X. 요청 duration(초)로 크레딧 추정.
+            _ctx["result_summary"] = {
+                "billed_duration_sec": duration,
+                "ratio": ratio,
+            }
         return task
 
     except TaskFailedError as e:
