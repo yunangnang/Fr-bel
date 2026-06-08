@@ -9,7 +9,7 @@ from moviepy.editor import AudioFileClip, concatenate_audioclips, VideoFileClip,
 from moviepy.video.fx.all import crop
 from openai import OpenAI
 from datetime import datetime
-from session_logger import log_api_call, _summarize_text
+from session_logger import log_api_call, summarize_text
 
 
 client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
@@ -172,7 +172,7 @@ def analyze_story_structure(full_text: str, known_title: str = ""):
     
     with log_api_call("openai_chat", "gpt-5.2", {
         "function": "analyze_story_structure",
-        "user_text": _summarize_text(full_text),
+        "user_text": summarize_text(full_text),
     }) as _ctx:
         response = client.chat.completions.create(
             model="gpt-5.2",  # 상세 분석을 위해 고성능 모델 권장
@@ -355,7 +355,7 @@ def analyze_characters_and_speakers(client, full_text: str):
 
     with log_api_call("openai_chat", "gpt-5.2", {
         "function": "analyze_characters_and_speakers",
-        "user_text": _summarize_text(full_text),
+        "user_text": summarize_text(full_text),
     }) as _ctx:
         response = client.chat.completions.create(
             model="gpt-5.2",
@@ -527,7 +527,7 @@ def recommend_trailer_segments(full_text: str, analysis_data: dict):
 
     with log_api_call("openai_chat", "gpt-5.2", {
         "function": "recommend_trailer_segments",
-        "user_text": _summarize_text(user_content),
+        "user_text": summarize_text(user_content),
     }) as _ctx:
         response = client.chat.completions.create(
             model="gpt-5.2",
@@ -784,7 +784,7 @@ def generate_script_with_specs(target_text: str, duration_opt: str, age_info: di
 
     with log_api_call("openai_chat", "gpt-5.2", {
         "function": "generate_script_with_specs",
-        "user_text": _summarize_text(user_content),
+        "user_text": summarize_text(user_content),
     }) as _ctx:
         response = client.chat.completions.create(
             model="gpt-5.2", # 긴 텍스트 처리를 위해 gpt-5.2 권장
@@ -945,7 +945,7 @@ def generate_conversation_oriented_script(target_text: str, duration_opt: str, a
     try:
         with log_api_call("openai_chat", "gpt-5.2", {
             "function": "generate_conversation_oriented_script",
-            "user_text": _summarize_text(user_content),
+            "user_text": summarize_text(user_content),
         }) as _ctx:
             response = client.chat.completions.create(
                 model="gpt-5.2",
@@ -1095,7 +1095,7 @@ def generate_comprehensive_script(target_text: str, duration_opt: str, age_info:
 
     with log_api_call("openai_chat", "gpt-5.2", {
         "function": "generate_comprehensive_script",
-        "user_text": _summarize_text(user_content),
+        "user_text": summarize_text(user_content),
     }) as _ctx:
         response = client.chat.completions.create(
             model="gpt-5.2", # 긴 텍스트 처리를 위해 gpt-5.2 권장
@@ -1226,7 +1226,7 @@ def generate_standalone_hooks(target_text: str, full_text: str, char_info: dict)
 
     with log_api_call("openai_chat", "gpt-5.2", {
         "function": "generate_standalone_hooks",
-        "user_text": _summarize_text(user_content),
+        "user_text": summarize_text(user_content),
     }) as _ctx:
         response = client.chat.completions.create(
             model="gpt-5.2",

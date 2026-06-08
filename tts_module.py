@@ -16,7 +16,7 @@ from dotenv import load_dotenv
 # 공통 로직 모듈 임포트
 import tts_core
 from tts_core import add_audio_to_video, concat_videos_with_audio, get_audio_duration
-from session_logger import log_api_call, _summarize_text
+from session_logger import log_api_call, summarize_text
 
 # 클로바 API 설정 (환경변수 우선, 폴백으로 기본값)
 import os
@@ -372,7 +372,7 @@ def _generate_with_gemini(
         try:
             with log_api_call("gemini_tts", actual_model, {
                 "voice": short_voice,
-                "text": _summarize_text(text),
+                "text": summarize_text(text),
                 "has_style_prompt": bool(style_prompt),
                 "attempt": attempt + 1,
             }) as _ctx:
@@ -438,7 +438,7 @@ def _generate_with_gpt(text: str, output_path: str, speaker: str, speed: float, 
         client = OpenAI()
         with log_api_call("openai_tts", OPENAI_TTS_MODEL, {
             "voice": voice_id,
-            "text": _summarize_text(text),
+            "text": summarize_text(text),
             "speed": gpt_speed,
             "has_instructions": bool(instructions),
         }):
@@ -476,7 +476,7 @@ def _generate_with_clova(text, output_path, speaker, speed, pitch, volume, emoti
         try:
             with log_api_call("clova_tts", "tts-premium", {
                 "voice": speaker,
-                "text": _summarize_text(text),
+                "text": summarize_text(text),
                 "speed": speed, "pitch": pitch, "volume": volume,
                 "emotion": emotion,
                 "attempt": attempt + 1,

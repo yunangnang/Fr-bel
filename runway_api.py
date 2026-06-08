@@ -6,7 +6,7 @@ from pathlib import Path
 from PIL import Image
 import io, base64
 import os
-from session_logger import log_api_call, _summarize_text
+from session_logger import log_api_call, summarize_text
 
 # .env 로드 (RUNWAYML_API_SECRET 필요)
 ENV_PATH = Path(__file__).resolve().parent / ".env"
@@ -32,7 +32,7 @@ def generate_video_from_image(image_path: str, prompt_text: str, duration=5, rat
     try:
         with log_api_call("runway_gen4", "gen4_turbo", {
             "image": Path(image_path).name,
-            "prompt": _summarize_text(prompt_text),
+            "prompt": summarize_text(prompt_text),
             "duration": duration,
             "ratio": ratio,
         }) as _ctx:

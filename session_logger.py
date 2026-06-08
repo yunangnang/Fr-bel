@@ -68,7 +68,7 @@ def log_event(action: str, data: Optional[dict] = None) -> None:
         print(f"[session_logger] log_event failed: {e}")
 
 
-def _summarize_text(text: str, max_chars: int = 200) -> dict:
+def summarize_text(text: str, max_chars: int = 200) -> dict:
     """프롬프트·payload를 jsonl에 부담 없이 넣기 위한 요약."""
     if text is None:
         return {"length": 0, "preview": "", "sha8": ""}
@@ -147,7 +147,7 @@ def log_api_call(
 
     사용 예:
         with log_api_call("openai_chat", "gpt-4o-mini",
-                          {"prompt": _summarize_text(prompt)}) as ctx:
+                          {"prompt": summarize_text(prompt)}) as ctx:
             resp = client.chat.completions.create(...)
             ctx["response_obj"] = resp  # usage 자동 추출
             ctx["result_summary"] = {"choices": len(resp.choices)}
