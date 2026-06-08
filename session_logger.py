@@ -3,12 +3,15 @@
 워크숍 세션 로깅 유틸리티.
 사용자별로 격리된 폴더에 작업 데이터를 저장하고 ZIP으로 묶어 다운로드 가능하게 한다.
 """
+import hashlib
 import io
 import json
+import time
 import zipfile
+from contextlib import contextmanager
 from datetime import datetime
 from pathlib import Path
-from typing import Optional
+from typing import Any, Optional
 
 import streamlit as st
 
@@ -63,6 +66,128 @@ def log_event(action: str, data: Optional[dict] = None) -> None:
     except Exception as e:
         # 로깅 실패가 앱 동작을 막아선 안 됨
         print(f"[session_logger] log_event failed: {e}")
+
+
+def _summarize_text(text: str, max_chars: int = 200) -> dict:
+    """프롬프트·payload를 jsonl에 부담 없이 넣기 위한 요약."""
+    if text is None:
+        return {"length": 0, "preview": "", "sha8": ""}
+    s = str(text)
+    digest = hashlib.sha256(s.encode("utf-8", errors="ignore")).hexdigest()[:8]
+    return {
+        "length": len(s),
+        "preview": s[:max_chars],
+        "sha8": digest,
+    }
+
+
+def log_stage_entry(stage_name: str, extra: Optional[dict] = None) -> None:
+    """단계 첫 진입 1회만 기록 (Streamlit 리런에도 idempotent)."""
+    if not st.session_state.get("session_id"):
+        return
+    flag_key = f"_stage_entered_{stage_name}"
+    if st.session_state.get(flag_key):
+        return
+    st.session_state[flag_key] = True
+    payload = {"stage": stage_name}
+    if extra:
+        payload.update(extra)
+    log_event("stage_entered", payload)
+
+
+def log_button_click(button_id: str, extra: Optional[dict] = None) -> None:
+    """주요 버튼 클릭 통일 이벤트."""
+    payload = {"button": button_id}
+    if extra:
+        payload.update(extra)
+    log_event("button_click", payload)
+
+
+def _extract_usage(response: Any) -> Optional[dict]:
+    """OpenAI / Gemini 응답에서 토큰 사용량 안전 추출. 실패하면 None."""
+    if response is None:
+        return None
+    # OpenAI: response.usage.prompt_tokens / completion_tokens / total_tokens
+    usage = getattr(response, "usage", None)
+    if usage is not None:
+        out = {}
+        for k in ("prompt_tokens", "completion_tokens", "total_tokens"):
+            v = getattr(usage, k, None)
+            if v is not None:
+                out[k] = v
+        # Gemini google-genai: usage_metadata.prompt_token_count / candidates_token_count
+        for k in ("input_tokens", "output_tokens", "cached_tokens"):
+            v = getattr(usage, k, None)
+            if v is not None:
+                out[k] = v
+        if out:
+            return out
+    meta = getattr(response, "usage_metadata", None)
+    if meta is not None:
+        out = {}
+        for k in (
+            "prompt_token_count", "candidates_token_count",
+            "total_token_count", "cached_content_token_count",
+        ):
+            v = getattr(meta, k, None)
+            if v is not None:
+                out[k] = v
+        if out:
+            return out
+    return None
+
+
+@contextmanager
+def log_api_call(
+    api_name: str,
+    endpoint: str,
+    request_summary: Optional[dict] = None,
+):
+    """API 호출을 감싸 시작·종료·duration·usage·error를 자동 기록.
+
+    사용 예:
+        with log_api_call("openai_chat", "gpt-4o-mini",
+                          {"prompt": _summarize_text(prompt)}) as ctx:
+            resp = client.chat.completions.create(...)
+            ctx["response_obj"] = resp  # usage 자동 추출
+            ctx["result_summary"] = {"choices": len(resp.choices)}
+
+    원본 예외는 로그 후 재발생되어 호출자가 평소처럼 처리할 수 있게 함.
+    """
+    started_perf = time.perf_counter()
+    started_iso = datetime.now().isoformat(timespec="seconds")
+    req_payload = {"endpoint": endpoint, "started_at": started_iso}
+    if request_summary:
+        req_payload["request"] = request_summary
+    log_event(f"{api_name}_request", req_payload)
+
+    ctx: dict = {}
+    error_info = None
+    try:
+        yield ctx
+    except Exception as e:
+        error_info = {
+            "type": type(e).__name__,
+            "message": str(e)[:500],
+        }
+        raise
+    finally:
+        duration_ms = int((time.perf_counter() - started_perf) * 1000)
+        resp_payload = {
+            "endpoint": endpoint,
+            "duration_ms": duration_ms,
+            "success": error_info is None,
+        }
+        if error_info:
+            resp_payload["error"] = error_info
+        # response_obj가 있으면 usage 자동 추출
+        usage = _extract_usage(ctx.get("response_obj"))
+        if usage:
+            resp_payload["usage"] = usage
+        # 호출자가 직접 추가하고 싶은 데이터
+        if ctx.get("result_summary"):
+            resp_payload["result"] = ctx["result_summary"]
+        log_event(f"{api_name}_response", resp_payload)
 
 
 def make_session_zip() -> bytes:
