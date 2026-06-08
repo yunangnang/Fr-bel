@@ -9,6 +9,7 @@ from moviepy.editor import AudioFileClip, concatenate_audioclips, VideoFileClip,
 from moviepy.video.fx.all import crop
 from openai import OpenAI
 from datetime import datetime
+from session_logger import log_api_call, _summarize_text
 
 
 client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
@@ -169,15 +170,20 @@ def analyze_story_structure(full_text: str, known_title: str = ""):
     }}
     """
     
-    response = client.chat.completions.create(
-        model="gpt-5.2",  # 상세 분석을 위해 고성능 모델 권장
-        messages=[
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": f"다음 동화 내용을 분석해주세요:\n\n{full_text}"}
-        ],
-        response_format={"type": "json_object"}
-    )
-    
+    with log_api_call("openai_chat", "gpt-5.2", {
+        "function": "analyze_story_structure",
+        "user_text": _summarize_text(full_text),
+    }) as _ctx:
+        response = client.chat.completions.create(
+            model="gpt-5.2",  # 상세 분석을 위해 고성능 모델 권장
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": f"다음 동화 내용을 분석해주세요:\n\n{full_text}"}
+            ],
+            response_format={"type": "json_object"}
+        )
+        _ctx["response_obj"] = response
+
     return json.loads(response.choices[0].message.content)
 
 VOICE_TYPES = [
@@ -302,80 +308,65 @@ def analyze_characters_and_speakers(client, full_text: str):
     }
     """
 
-    response = client.chat.completions.create(
-        model="gpt-5.2",
-        messages=[
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": full_text}
-        ],
-        response_format={
-            "type": "json_schema",
-            "json_schema": {
-                "name": "character_and_dialogue_analysis",
-                "schema": {
-                    "type": "object",
-                    "required": ["characters", "dialogue_map"],
-                    "properties": {
-                        "characters": {
-                            "type": "array",
-                            "items": {
-                                "type": "object",
-                                "required": [
-                                    "id",
-                                    "name",
-                                    "aliases",
-                                    "gender",
-                                    "age_group",
-                                    "tone",
-                                    "voice_type"
-                                ],
-                                "properties": {
-                                    "id": { "type": "string" },
-                                    "name": { "type": "string" },
-                                    "aliases": {
-                                        "type": "array",
-                                        "items": { "type": "string" }
-                                    },
-                                    "gender": {
-                                        "type": "string",
-                                        "enum": ["Male", "Female"]
-                                    },
-                                    "age_group": {
-                                        "type": "string",
-                                        "enum": ["Child","Young", "Adult", "Elder"]
-                                    },
-                                    "tone": { "type": "string" },
-                                    "voice_type": {
-                                        "type": "string",
-                                        "enum": VOICE_TYPES
-                                    }
-                                }
-                            }
+    _schema = {
+        "type": "json_schema",
+        "json_schema": {
+            "name": "character_and_dialogue_analysis",
+            "schema": {
+                "type": "object",
+                "required": ["characters", "dialogue_map"],
+                "properties": {
+                    "characters": {
+                        "type": "array",
+                        "items": {
+                            "type": "object",
+                            "required": [
+                                "id", "name", "aliases", "gender",
+                                "age_group", "tone", "voice_type",
+                            ],
+                            "properties": {
+                                "id": {"type": "string"},
+                                "name": {"type": "string"},
+                                "aliases": {"type": "array", "items": {"type": "string"}},
+                                "gender": {"type": "string", "enum": ["Male", "Female"]},
+                                "age_group": {"type": "string", "enum": ["Child", "Young", "Adult", "Elder"]},
+                                "tone": {"type": "string"},
+                                "voice_type": {"type": "string", "enum": VOICE_TYPES},
+                            },
                         },
-                        "dialogue_map": {
-                            "type": "array",
-                            "items": {
-                                "type": "object",
-                                "required": [
-                                    "quote",
-                                    "speaker_id",
-                                    "page_num",
-                                    "context"
-                                ],
-                                "properties": {
-                                    "quote": { "type": "string" },
-                                    "speaker_id": { "type": "string" },
-                                    "page_num": { "type": "integer" },
-                                    "context": { "type": "string" }
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    )
-    
+                    },
+                    "dialogue_map": {
+                        "type": "array",
+                        "items": {
+                            "type": "object",
+                            "required": ["quote", "speaker_id", "page_num", "context"],
+                            "properties": {
+                                "quote": {"type": "string"},
+                                "speaker_id": {"type": "string"},
+                                "page_num": {"type": "integer"},
+                                "context": {"type": "string"},
+                            },
+                        },
+                    },
+                },
+            },
+        },
+    }
+
+    with log_api_call("openai_chat", "gpt-5.2", {
+        "function": "analyze_characters_and_speakers",
+        "user_text": _summarize_text(full_text),
+    }) as _ctx:
+        response = client.chat.completions.create(
+            model="gpt-5.2",
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": full_text},
+            ],
+            response_format=_schema,
+        )
+        _ctx["response_obj"] = response
+
     return json.loads(response.choices[0].message.content)
 
 # GPT 엔진 기준 9개 의미 카테고리. 캐릭터 차별화는 톤 프롬프트로 처리.
@@ -534,15 +525,20 @@ def recommend_trailer_segments(full_text: str, analysis_data: dict):
     {full_text}
     """
 
-    response = client.chat.completions.create(
-        model="gpt-5.2",
-        messages=[
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": user_content}
-        ],
-        response_format={"type": "json_object"}
-    )
-    
+    with log_api_call("openai_chat", "gpt-5.2", {
+        "function": "recommend_trailer_segments",
+        "user_text": _summarize_text(user_content),
+    }) as _ctx:
+        response = client.chat.completions.create(
+            model="gpt-5.2",
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_content}
+            ],
+            response_format={"type": "json_object"}
+        )
+        _ctx["response_obj"] = response
+
     return json.loads(response.choices[0].message.content)
 
 
@@ -786,15 +782,20 @@ def generate_script_with_specs(target_text: str, duration_opt: str, age_info: di
     {target_text}
     """
 
-    response = client.chat.completions.create(
-        model="gpt-5.2", # 긴 텍스트 처리를 위해 gpt-5.2 권장
-        messages=[
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": user_content}
-        ],
-        response_format={"type": "json_object"}
-    )
-    
+    with log_api_call("openai_chat", "gpt-5.2", {
+        "function": "generate_script_with_specs",
+        "user_text": _summarize_text(user_content),
+    }) as _ctx:
+        response = client.chat.completions.create(
+            model="gpt-5.2", # 긴 텍스트 처리를 위해 gpt-5.2 권장
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_content}
+            ],
+            response_format={"type": "json_object"}
+        )
+        _ctx["response_obj"] = response
+
     return json.loads(response.choices[0].message.content)
 
 
@@ -942,16 +943,21 @@ def generate_conversation_oriented_script(target_text: str, duration_opt: str, a
     """
 
     try:
-        response = client.chat.completions.create(
-            model="gpt-5.2",
-            messages=[
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": user_content}
-            ],
-            response_format={"type": "json_object"},
-            temperature=0.1 # 인덱스 선택의 정확성을 위해 낮춤
-        )
-        
+        with log_api_call("openai_chat", "gpt-5.2", {
+            "function": "generate_conversation_oriented_script",
+            "user_text": _summarize_text(user_content),
+        }) as _ctx:
+            response = client.chat.completions.create(
+                model="gpt-5.2",
+                messages=[
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": user_content}
+                ],
+                response_format={"type": "json_object"},
+                temperature=0.1 # 인덱스 선택의 정확성을 위해 낮춤
+            )
+            _ctx["response_obj"] = response
+
         gpt_result = json.loads(response.choices[0].message.content)
         
         # 5. [Post-Processing] 선택된 인덱스를 Step 3와 동일한 형식으로 변환
@@ -1087,15 +1093,20 @@ def generate_comprehensive_script(target_text: str, duration_opt: str, age_info:
     {target_text}
     """
 
-    response = client.chat.completions.create(
-        model="gpt-5.2", # 긴 텍스트 처리를 위해 gpt-5.2 권장
-        messages=[
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": user_content}
-        ],
-        response_format={"type": "json_object"}
-    )
-    
+    with log_api_call("openai_chat", "gpt-5.2", {
+        "function": "generate_comprehensive_script",
+        "user_text": _summarize_text(user_content),
+    }) as _ctx:
+        response = client.chat.completions.create(
+            model="gpt-5.2", # 긴 텍스트 처리를 위해 gpt-5.2 권장
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_content}
+            ],
+            response_format={"type": "json_object"}
+        )
+        _ctx["response_obj"] = response
+
     return json.loads(response.choices[0].message.content)
         
 # --------------------------------
@@ -1213,15 +1224,20 @@ def generate_standalone_hooks(target_text: str, full_text: str, char_info: dict)
     {full_text}
     """
 
-    response = client.chat.completions.create(
-        model="gpt-5.2", 
-        messages=[
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": user_content}
-        ],
-        response_format={"type": "json_object"}
-    )
-    
+    with log_api_call("openai_chat", "gpt-5.2", {
+        "function": "generate_standalone_hooks",
+        "user_text": _summarize_text(user_content),
+    }) as _ctx:
+        response = client.chat.completions.create(
+            model="gpt-5.2",
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_content}
+            ],
+            response_format={"type": "json_object"}
+        )
+        _ctx["response_obj"] = response
+
     return json.loads(response.choices[0].message.content)
 
 # =========================================================
