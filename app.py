@@ -105,7 +105,10 @@ st.title(" 동화책 예고편 만들기 ")
 # --------------------------------
 # 사용자 식별 (워크숍 데이터 수집용)
 # --------------------------------
-from session_logger import init_session, log_event, render_sidebar_panel
+from session_logger import (
+    init_session, log_event, render_sidebar_panel,
+    log_stage_entry, log_button_click,
+)
 
 if "user_name" not in st.session_state:
     st.session_state.user_name = ""
@@ -168,6 +171,7 @@ if not book_folders:
     st.error("character 폴더에 책이 없습니다.")
     st.stop()
 
+log_stage_entry("book_select")
 selected_book = st.selectbox("책 선택:", book_folders)
 
 # 책이 변경되면 이미지 목록 초기화 + 로깅
@@ -218,6 +222,7 @@ st.success(f" {len(images)}개의 삽화 로드 완료")
 st.divider()
 st.subheader("0.작업 방식 선택")
 
+log_stage_entry("mode_select")
 mode = st.radio(
     "어떤 방식으로 영상을 만드시겠습니까?",
     ["이미지 선택 기반 제작", "텍스트 분석 기반 예고편 제작"],
@@ -250,6 +255,7 @@ if st.session_state.current_mode != mode:
 # A. 기존 이미지 선택 기반 제작
 #-----------------------------
 if mode == "이미지 선택 기반 제작":
+    log_stage_entry("mode_a_entry", {"book": selected_book})
     st.info("🖼️ 마음에 드는 삽화를 먼저 고르면, AI가 이야기를 이어줍니다.")
     # --------------------------------
     # TXT 매칭 함수 (삽화 선택과 대본 생성 양쪽에서 사용)
@@ -935,6 +941,7 @@ if mode == "이미지 선택 기반 제작":
     # --------------------------------
     st.divider()
     st.subheader("③ 생성 프로세스")
+    log_stage_entry("mode_a_step1", {"book": selected_book})
 
     # =========================================================
     # [STEP 1] 페이지 원문 그대로 자막으로 사용 (Mode A 정책: 원본 텍스트)
@@ -942,6 +949,10 @@ if mode == "이미지 선택 기반 제작":
     st.markdown("#### 1️⃣ 자막 불러오기 및 수정")
 
     if st.button("1단계: 페이지 원문으로 자막 만들기", type="primary"):
+        log_button_click("mode_a_step1_load", {
+            "book": selected_book,
+            "scene_count": len(st.session_state.selected_pages),
+        })
         st.session_state.proc_uid = uuid.uuid4().hex[:8]
         log_event("modeA_step1_start", {
             "book": selected_book,
@@ -1394,6 +1405,7 @@ if mode == "이미지 선택 기반 제작":
         # =========================================================
         st.divider()
         st.markdown("#### 3️⃣ 최종 영상 합성")
+        log_stage_entry("mode_a_step3", {"book": selected_book})
 
         # 캐시된 장면별 Runway 개수 표시 → 사용자가 크레딧 차감 여부 미리 파악
         _cached_count = 0
@@ -1413,6 +1425,12 @@ if mode == "이미지 선택 기반 제작":
             )
 
         if st.button("🎬 최종 영상 합성", type="primary"):
+            log_button_click("mode_a_step3_compose", {
+                "scene_count": len(st.session_state.selected_pages),
+                "cached_runway": _cached_count,
+                "missing_runway": _missing,
+                "use_bgm": use_bgm,
+            })
             uid = st.session_state.proc_uid
             OUT = SESSION_DIR
             video_paths = []
