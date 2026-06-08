@@ -16,6 +16,7 @@ from dotenv import load_dotenv
 # 공통 로직 모듈 임포트
 import tts_core
 from tts_core import add_audio_to_video, concat_videos_with_audio, get_audio_duration
+from session_logger import log_api_call, _summarize_text
 
 # 클로바 API 설정 (환경변수 우선, 폴백으로 기본값)
 import os
@@ -369,20 +370,27 @@ def _generate_with_gemini(
     base_wait = 2
     for attempt in range(max_retries):
         try:
-            response = client.models.generate_content(
-                model=actual_model,
-                contents=contents,
-                config=types.GenerateContentConfig(
-                    response_modalities=["AUDIO"],
-                    speech_config=types.SpeechConfig(
-                        voice_config=types.VoiceConfig(
-                            prebuilt_voice_config=types.PrebuiltVoiceConfig(
-                                voice_name=short_voice
+            with log_api_call("gemini_tts", actual_model, {
+                "voice": short_voice,
+                "text": _summarize_text(text),
+                "has_style_prompt": bool(style_prompt),
+                "attempt": attempt + 1,
+            }) as _ctx:
+                response = client.models.generate_content(
+                    model=actual_model,
+                    contents=contents,
+                    config=types.GenerateContentConfig(
+                        response_modalities=["AUDIO"],
+                        speech_config=types.SpeechConfig(
+                            voice_config=types.VoiceConfig(
+                                prebuilt_voice_config=types.PrebuiltVoiceConfig(
+                                    voice_name=short_voice
+                                )
                             )
-                        )
+                        ),
                     ),
-                ),
-            )
+                )
+                _ctx["response_obj"] = response
             part = response.candidates[0].content.parts[0]
             audio_bytes = part.inline_data.data
             mime = part.inline_data.mime_type or ""
@@ -428,15 +436,21 @@ def _generate_with_gpt(text: str, output_path: str, speaker: str, speed: float, 
 
     try:
         client = OpenAI()
-        with client.audio.speech.with_streaming_response.create(
-            model=OPENAI_TTS_MODEL,
-            voice=voice_id,
-            input=text,
-            speed=gpt_speed,
-            instructions=instructions # [핵심] 감정 프롬프트
-        ) as response:
-            Path(output_path).parent.mkdir(parents=True, exist_ok=True)
-            response.stream_to_file(output_path)
+        with log_api_call("openai_tts", OPENAI_TTS_MODEL, {
+            "voice": voice_id,
+            "text": _summarize_text(text),
+            "speed": gpt_speed,
+            "has_instructions": bool(instructions),
+        }):
+            with client.audio.speech.with_streaming_response.create(
+                model=OPENAI_TTS_MODEL,
+                voice=voice_id,
+                input=text,
+                speed=gpt_speed,
+                instructions=instructions # [핵심] 감정 프롬프트
+            ) as response:
+                Path(output_path).parent.mkdir(parents=True, exist_ok=True)
+                response.stream_to_file(output_path)
         return True
     except Exception as e:
         print(f"     GPT API Error: {e}")
@@ -460,7 +474,15 @@ def _generate_with_clova(text, output_path, speaker, speed, pitch, volume, emoti
 
     for attempt in range(3):
         try:
-            resp = requests.post(CLOVA_ENDPOINT, headers=headers, data=payload, timeout=30)
+            with log_api_call("clova_tts", "tts-premium", {
+                "voice": speaker,
+                "text": _summarize_text(text),
+                "speed": speed, "pitch": pitch, "volume": volume,
+                "emotion": emotion,
+                "attempt": attempt + 1,
+            }) as _ctx:
+                resp = requests.post(CLOVA_ENDPOINT, headers=headers, data=payload, timeout=30)
+                _ctx["result_summary"] = {"status_code": resp.status_code}
             if resp.status_code == 200:
                 Path(output_path).parent.mkdir(parents=True, exist_ok=True)
                 with open(output_path, "wb") as f: f.write(resp.content)
