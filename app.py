@@ -1630,8 +1630,12 @@ if mode == "이미지 선택 기반 제작":
         # ---------------------------------------------------------
         if st.session_state.step3_final_video and os.path.exists(st.session_state.step3_final_video):
             st.success("🎉 모든 작업이 완료되었습니다!")
-            st.video(st.session_state.step3_final_video)
-    
+            # 영상을 너무 크지 않게 가운데 좁은 컬럼에 표시. 사용자는 플레이어 우하단의
+            # 전체화면 버튼으로 크게 볼 수 있음.
+            _vid_left, _vid_mid, _vid_right = st.columns([1, 2, 1])
+            with _vid_mid:
+                st.video(st.session_state.step3_final_video)
+
             with open(st.session_state.step3_final_video, "rb") as f:
                 st.download_button(
                     " 최종 영상 다운로드",
