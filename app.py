@@ -515,63 +515,73 @@ if mode == "이미지 선택 기반 제작":
         return audio_paths
 
     # --------------------------------
-    # ① 삽화 선택 (텍스트와 함께)
+    # [WIZARD STEP 1] 삽화 선택
     # --------------------------------
-    st.subheader("① 사용할 삽화 선택")
-    st.caption("각 페이지의 그림과 텍스트를 함께 보고 영상에 쓸 장면을 고르세요.")
+    if modeA_step == 1:
+        st.subheader("① 사용할 삽화 선택")
+        st.caption("각 페이지의 그림과 텍스트를 함께 보고 영상에 쓸 장면을 고르세요.")
 
-    with st.form("select_form"):
-        cols = st.columns(4)
-        selected = list(st.session_state.selected_pages)
+        with st.form("select_form"):
+            cols = st.columns(4)
+            selected = list(st.session_state.selected_pages)
 
-        for i, (name, img) in enumerate(images):
-            with cols[i % 4]:
-                st.image(img, use_container_width=True)
-                if st.checkbox(name, name in selected, key=f"chk_{name}"):
-                    if name not in selected:
-                        selected.append(name)
-                else:
-                    if name in selected:
-                        selected.remove(name)
+            for i, (name, img) in enumerate(images):
+                with cols[i % 4]:
+                    st.image(img, use_container_width=True)
+                    if st.checkbox(name, name in selected, key=f"chk_{name}"):
+                        if name not in selected:
+                            selected.append(name)
+                    else:
+                        if name in selected:
+                            selected.remove(name)
 
-                # 페이지 텍스트 미리보기 — 고정 높이 + 내부 스크롤로 그리드 정렬 유지
-                _page_text = extract_text_for_image(name, txt_file)
-                if _page_text:
-                    _escaped = (
-                        _page_text
-                        .replace("&", "&amp;")
-                        .replace("<", "&lt;")
-                        .replace(">", "&gt;")
-                        .replace("\n", "<br>")
-                    )
-                    st.markdown(
-                        f'<div style="height: 110px; overflow-y: auto; padding: 8px 10px; '
-                        f'background-color: rgba(250,250,250,0.5); border-radius: 6px; '
-                        f'font-size: 0.85em; line-height: 1.45; color: #444; '
-                        f'margin-bottom: 12px;">{_escaped}</div>',
-                        unsafe_allow_html=True,
-                    )
-                else:
-                    st.markdown(
-                        '<div style="height: 110px; padding: 8px 10px; display: flex; '
-                        'align-items: center; justify-content: center; '
-                        'background-color: rgba(250,250,250,0.3); border-radius: 6px; '
-                        'color: #999; font-style: italic; font-size: 0.85em; '
-                        'margin-bottom: 12px;">(그림만 있는 페이지)</div>',
-                        unsafe_allow_html=True,
-                    )
+                    # 페이지 텍스트 미리보기 — 고정 높이 + 내부 스크롤로 그리드 정렬 유지
+                    _page_text = extract_text_for_image(name, txt_file)
+                    if _page_text:
+                        _escaped = (
+                            _page_text
+                            .replace("&", "&amp;")
+                            .replace("<", "&lt;")
+                            .replace(">", "&gt;")
+                            .replace("\n", "<br>")
+                        )
+                        st.markdown(
+                            f'<div style="height: 110px; overflow-y: auto; padding: 8px 10px; '
+                            f'background-color: rgba(250,250,250,0.5); border-radius: 6px; '
+                            f'font-size: 0.85em; line-height: 1.45; color: #444; '
+                            f'margin-bottom: 12px;">{_escaped}</div>',
+                            unsafe_allow_html=True,
+                        )
+                    else:
+                        st.markdown(
+                            '<div style="height: 110px; padding: 8px 10px; display: flex; '
+                            'align-items: center; justify-content: center; '
+                            'background-color: rgba(250,250,250,0.3); border-radius: 6px; '
+                            'color: #999; font-style: italic; font-size: 0.85em; '
+                            'margin-bottom: 12px;">(그림만 있는 페이지)</div>',
+                            unsafe_allow_html=True,
+                        )
 
-        if st.form_submit_button(" 선택 확정", type="primary"):
-            st.session_state.selected_pages = selected
-            log_event("images_selected", {
-                "book": selected_book,
-                "count": len(selected),
-                "pages": selected,
-            })
+            if st.form_submit_button(" 선택 확정", type="primary"):
+                st.session_state.selected_pages = selected
+                log_event("images_selected", {
+                    "book": selected_book,
+                    "count": len(selected),
+                    "pages": selected,
+                })
 
-    # 선택된 이미지 미리보기
+        _has_selection = bool(st.session_state.selected_pages)
+        if not _has_selection:
+            st.info("아직 선택한 삽화가 없습니다. 선택 확정 후 다음 단계로 이동할 수 있어요.")
+        _render_modeA_nav(prev_ok=False, next_ok=_has_selection)
+        st.stop()
+
+    # 단계 2+에 들어왔는데 이미지가 비어있는 비정상 상태 가드
     if not st.session_state.selected_pages:
-        st.info("아직 선택한 삽화가 없습니다.")
+        st.warning("선택한 삽화가 없습니다. 1단계로 돌아가서 선택해 주세요.")
+        if st.button("← 1단계로 돌아가기"):
+            st.session_state.modeA_wizard_step = 1
+            st.rerun()
         st.stop()
 
     # --------------------------------
