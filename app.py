@@ -514,6 +514,101 @@ if mode == "이미지 선택 기반 제작":
 
         return audio_paths
 
+    # =========================================================
+    # [SHARED MODE A SETUP] 모든 단계가 공유하는 헬퍼/상태/상수
+    # (Wizard 도입 후 step 2 안에 있던 것들을 step 3·4도 쓸 수 있게 위로 끌어올림)
+    # =========================================================
+    BGM_MAPPING = {
+        "리딩토탈_48개월_내지_아기토끼포포의가족_최종 2_ISBN": "19",
+        "리딩토탈_48개월_표지_아기토끼포포의가족_QR교체_수정_ISBN": "19",
+        "리딩토탈_48개월_내지_헨젤과그레텔_재쇄2_ISBN": "110",
+        "리딩토탈_48개월_표지_헨젤과그레텔_재쇄1_ISBN": "110",
+    }
+
+    def get_bgm_folder_name(full_name):
+        """책 이름으로 BGM 폴더명 찾기 (명시적 매핑 우선, 없으면 유사도 비교)"""
+        if full_name in BGM_MAPPING:
+            return BGM_MAPPING[full_name]
+        from difflib import SequenceMatcher
+        bgm_root = BASE_DIR / "BGM"
+        if not bgm_root.exists():
+            return full_name
+        bgm_folders = [f.name for f in bgm_root.iterdir() if f.is_dir()]
+        if not bgm_folders:
+            return full_name
+        normalized_input = full_name.replace(" ", "").replace("_", "")
+        for folder in bgm_folders:
+            normalized_folder = folder.replace(" ", "").replace("_", "")
+            if normalized_folder in normalized_input or normalized_input in normalized_folder:
+                return folder
+        best_match = None
+        best_ratio = 0.0
+        for folder in bgm_folders:
+            normalized_folder = folder.replace(" ", "").replace("_", "")
+            ratio = SequenceMatcher(None, normalized_input, normalized_folder).ratio()
+            if ratio > best_ratio:
+                best_ratio = ratio
+                best_match = folder
+        if best_match and best_ratio >= 0.4:
+            return best_match
+        return full_name
+
+    bgm_folder_name = get_bgm_folder_name(selected_book)
+    BGM_DIR = BASE_DIR / "BGM" / bgm_folder_name
+
+    def get_bgm_for_page(page_name: str, bgm_dir: Path):
+        """페이지 이름에서 번호를 추출하여 해당하는 BGM 파일 찾기"""
+        if not bgm_dir.exists():
+            return None
+        match = re.search(r"page_(\d+)", page_name)
+        if not match:
+            return None
+        page_num = int(match.group(1))
+        for bgm_file in bgm_dir.iterdir():
+            if bgm_file.suffix.lower() not in ['.wav', '.mp3', '.m4a']:
+                continue
+            bgm_match = re.search(r'_(\d+)P', bgm_file.name)
+            if bgm_match and int(bgm_match.group(1)) == page_num:
+                return bgm_file
+            bgm_match = re.search(r'Page\s*(\d+)', bgm_file.name)
+            if bgm_match and int(bgm_match.group(1)) == page_num:
+                return bgm_file
+        return None
+
+    # Session state 초기화 (모든 step이 공유)
+    if "proc_uid" not in st.session_state:
+        st.session_state.proc_uid = None
+    if "step1_scripts" not in st.session_state:
+        st.session_state.step1_scripts = None
+    if "step2_audio" not in st.session_state:
+        st.session_state.step2_audio = None
+    if "step3_final_video" not in st.session_state:
+        st.session_state.step3_final_video = None
+    if "mode_a_preview_video" not in st.session_state:
+        st.session_state.mode_a_preview_video = None
+    if "modeA_scene_videos" not in st.session_state:
+        st.session_state.modeA_scene_videos = None
+    if "mode_a_characters" not in st.session_state:
+        st.session_state.mode_a_characters = None
+
+    # 나레이터 가상 캐릭터 (id 고정)
+    NARRATOR_ID = "_narrator_"
+    def _default_narrator_entry():
+        return {
+            "id": NARRATOR_ID,
+            "name": "🎙️ 나레이터 (전체 나레이션)",
+            "voice_type": "narrator",
+            "voice_label": "🎙️ 나레이터",
+        }
+
+    # 분위기 프롬프트 / 기본값 (사용자가 step 2에서 수정)
+    if "modeA_prompt" not in st.session_state:
+        st.session_state.modeA_prompt = "gentle cinematic movement, children's book illustration"
+    PROMPT = st.session_state.modeA_prompt
+    DEFAULT_DURATION = 5
+    use_bgm = False
+    bgm_volume = 0.15
+
     # --------------------------------
     # [WIZARD STEP 1] 삽화 선택
     # --------------------------------
@@ -585,411 +680,312 @@ if mode == "이미지 선택 기반 제작":
         st.stop()
 
     # --------------------------------
-    # ② 영상 옵션 설정
+    # [WIZARD STEP 2] 분위기·캐릭터 보이스 설정
+    # (BGM helpers, session_state init, NARRATOR setup은 SHARED SETUP으로 이동됨)
     # --------------------------------
-    st.divider()
-    st.subheader("② 동화책 예고편 분위기 설정")
+    if modeA_step == 2:
+        st.divider()
+        st.subheader("② 동화책 예고편 분위기 설정")
 
-    PROMPT = st.text_input("예고편의 전체적인 분위기를 정해주세요!", "gentle cinematic movement, children's book illustration")
-    DEFAULT_DURATION = 5
-
-    # BGM 기본값 (실제 위젯은 Step 3 위에서 렌더됨)
-    use_bgm = False
-    bgm_volume = 0.15
-
-    BGM_MAPPING = {
-        "리딩토탈_48개월_내지_아기토끼포포의가족_최종 2_ISBN": "19",
-        "리딩토탈_48개월_표지_아기토끼포포의가족_QR교체_수정_ISBN": "19",
-        "리딩토탈_48개월_내지_헨젤과그레텔_재쇄2_ISBN": "110",
-        "리딩토탈_48개월_표지_헨젤과그레텔_재쇄1_ISBN": "110",
-    }
-
-    def get_bgm_folder_name(full_name):
-        """책 이름으로 BGM 폴더명 찾기 (명시적 매핑 우선, 없으면 유사도 비교)"""
-        if full_name in BGM_MAPPING:
-            return BGM_MAPPING[full_name]
-
-        from difflib import SequenceMatcher
-        bgm_root = BASE_DIR / "BGM"
-        if not bgm_root.exists():
-            return full_name
-
-        bgm_folders = [f.name for f in bgm_root.iterdir() if f.is_dir()]
-        if not bgm_folders:
-            return full_name
-
-        normalized_input = full_name.replace(" ", "").replace("_", "")
-
-        # 1차: 부분 문자열 매칭
-        for folder in bgm_folders:
-            normalized_folder = folder.replace(" ", "").replace("_", "")
-            if normalized_folder in normalized_input or normalized_input in normalized_folder:
-                return folder
-
-        # 2차: 유사도 비교
-        best_match = None
-        best_ratio = 0.0
-        for folder in bgm_folders:
-            normalized_folder = folder.replace(" ", "").replace("_", "")
-            ratio = SequenceMatcher(None, normalized_input, normalized_folder).ratio()
-            if ratio > best_ratio:
-                best_ratio = ratio
-                best_match = folder
-
-        if best_match and best_ratio >= 0.4:
-            return best_match
-
-        return full_name
-
-    bgm_folder_name = get_bgm_folder_name(selected_book)
-    BGM_DIR = BASE_DIR / "BGM" / bgm_folder_name
-
-    def get_bgm_for_page(page_name: str, bgm_dir: Path):
-        """페이지 이름에서 번호를 추출하여 해당하는 BGM 파일 찾기"""
-        if not bgm_dir.exists():
-            return None
-
-        # page_006.png -> 6
-        match = re.search(r"page_(\d+)", page_name)
-        if not match:
-            return None
-        page_num = int(match.group(1))
-
-        # BGM 폴더에서 해당 페이지 번호의 파일 찾기
-        for bgm_file in bgm_dir.iterdir():
-            if bgm_file.suffix.lower() not in ['.wav', '.mp3', '.m4a']:
-                continue
-            # 패턴1: _숫자P (예: _11P수정.wav)
-            bgm_match = re.search(r'_(\d+)P', bgm_file.name)
-            if bgm_match and int(bgm_match.group(1)) == page_num:
-                return bgm_file
-            # 패턴2: Page 숫자 (예: _Page 11.m4a)
-            bgm_match = re.search(r'Page\s*(\d+)', bgm_file.name)
-            if bgm_match and int(bgm_match.group(1)) == page_num:
-                return bgm_file
-
-        return None
-
-    # --------------------------------
-    # 🗂 Session State (3단계 데이터 저장용)
-    # --------------------------------
-    # 단계별 데이터를 저장할 공간을 초기화합니다.
-    if "proc_uid" not in st.session_state:
-        st.session_state.proc_uid = None      # 전체 프로세스 공유 ID
-    if "step1_scripts" not in st.session_state:
-        st.session_state.step1_scripts = None # 대본 데이터 [{"text":..., "speaker":...}]
-    if "step2_audio" not in st.session_state:
-        st.session_state.step2_audio = None   # 오디오 경로 및 길이 [{"path":..., "duration":...}]
-    if "step3_final_video" not in st.session_state:
-        st.session_state.step3_final_video = None  # 최종 영상 경로
-    if "mode_a_preview_video" not in st.session_state:
-        st.session_state.mode_a_preview_video = None  # Runway 호출 전 정적 미리보기 경로
-    if "modeA_scene_videos" not in st.session_state:
-        # 장면별 Runway 결과 캐시. 각 항목: {"raw_path": str, "prompt_used": str, "runway_dur": int}
-        st.session_state.modeA_scene_videos = None
-    if "mode_a_characters" not in st.session_state:
-        st.session_state.mode_a_characters = None  # {"characters":[...], "dialogue_map":[...]}
-
-    # 🎙️ 나레이터 가상 캐릭터 — 항상 첫 행에 보장. 사용자가 캐릭터 프로필에서
-    # 보이스만 지정하면 모든 나레이션 부분에 적용됨. id="_narrator_"는 코드에서
-    # 식별용으로만 쓰이고 화면 표시는 name 컬럼이 함.
-    NARRATOR_ID = "_narrator_"
-    def _default_narrator_entry():
-        return {
-            "id": NARRATOR_ID,
-            "name": "🎙️ 나레이터 (전체 나레이션)",
-            "voice_type": "narrator",
-            "voice_label": "🎙️ 나레이터",
-        }
-
-    # mode_a_characters가 None이면 narrator만 있는 dict로 초기화
-    if st.session_state.mode_a_characters is None:
-        st.session_state.mode_a_characters = {
-            "characters": [_default_narrator_entry()],
-            "dialogue_map": [],
-        }
-    else:
-        # 분석 결과는 있는데 narrator가 빠져 있으면 첫 행에 삽입
-        _chars_list = st.session_state.mode_a_characters.get("characters", []) or []
-        if not any(c.get("id") == NARRATOR_ID for c in _chars_list):
-            _chars_list.insert(0, _default_narrator_entry())
-            st.session_state.mode_a_characters["characters"] = _chars_list
-
-    # _has_chars = "narrator 외에 분석된 캐릭터가 있는가" — 자동 분석 트리거 판단용.
-    _analyzed_chars = [
-        c for c in st.session_state.mode_a_characters.get("characters", [])
-        if c.get("id") != NARRATOR_ID
-    ]
-    _has_chars = bool(_analyzed_chars)
-
-    # 목소리 모드 / TTS 엔진은 워크숍 단순화를 위해 고정.
-    #   - voice_mode: "캐릭터별 보이스 사용" (분석 결과 활용)
-    #   - tts engine: Gemini 2.5 Pro (google-genai 경유, 톤/말투 prompt 반영)
-    st.session_state.mode_a_voice_mode_widget = "캐릭터별 보이스 사용 (분석 결과 활용)"
-    _selected_chars_mode = True
-
-    # 캐릭터 분석 결과가 없으면 자동 분석 트리거 (첫 진입 시 1회).
-    _just_switched_to_chars = not _has_chars and not st.session_state.get("mode_a_char_analysis_attempted")
-
-    def _merge_analysis_with_narrator(result, existing_narrator=None):
-        """캐릭터 분석 결과에 narrator 항목을 첫 행에 보존."""
-        chars = result.get("characters", []) or []
-        # voice_label 정규화
-        for c in chars:
-            vt = c.get("voice_type", "narrator")
-            c["voice_label"] = b_text_based.GPT_VOICE_TO_UI_LABEL.get(vt, "🎙️ 나레이터")
-        # 기존 narrator 보이스 설정 보존
-        narrator_entry = existing_narrator or _default_narrator_entry()
-        chars = [narrator_entry] + [c for c in chars if c.get("id") != NARRATOR_ID]
-        result["characters"] = chars
-        return result
-
-    # 자동 캐릭터 분석 트리거 (첫 진입 시 1회만)
-    if _just_switched_to_chars and not _has_chars:
-        st.session_state.mode_a_char_analysis_attempted = True
-        full_text = txt_file.read_text(encoding="utf-8") if txt_file.exists() else ""
-        if full_text:
-            with st.spinner("등장인물 분석 중... (5~15초)"):
-                try:
-                    # 분석 전 narrator 보이스 설정 보존
-                    _existing_narrator = next(
-                        (c for c in st.session_state.mode_a_characters.get("characters", [])
-                         if c.get("id") == NARRATOR_ID),
-                        None,
-                    )
-                    result = b_text_based.analyze_characters_and_speakers(client, full_text)
-                    result = _merge_analysis_with_narrator(result, _existing_narrator)
-                    st.session_state.mode_a_characters = result
-                    log_event("modeA_char_analysis_done", {
-                        "characters": result.get("characters", []),
-                        "dialogue_count": len(result.get("dialogue_map", [])),
-                        "trigger": "auto_on_entry",
-                    })
-                    st.success(f"✅ {len(result.get('characters', [])) - 1}명의 캐릭터를 찾았습니다.")
-                    st.rerun()
-                except Exception as e:
-                    st.error(f"분석 실패: {e}. 아래의 🎭 캐릭터 분석 실행 버튼으로 다시 시도해 주세요.")
-        else:
-            st.error("책 txt 파일을 읽을 수 없습니다.")
-
-    # --------------------------------
-    # 🎭 캐릭터 분석 (자동 실행, 재분석 버튼은 fallback)
-    # --------------------------------
-    btn_label = "🔄 캐릭터 다시 분석" if _has_chars else "🎭 캐릭터 분석 실행"
-
-    if st.button(btn_label, key="mode_a_char_analysis_btn", type="secondary"):
-        full_text = txt_file.read_text(encoding="utf-8") if txt_file.exists() else ""
-        if not full_text:
-            st.error("책 txt 파일을 읽을 수 없습니다.")
-        else:
-            with st.spinner("등장인물 분석 중... (5~15초)"):
-                try:
-                    _existing_narrator = next(
-                        (c for c in st.session_state.mode_a_characters.get("characters", [])
-                         if c.get("id") == NARRATOR_ID),
-                        None,
-                    )
-                    result = b_text_based.analyze_characters_and_speakers(client, full_text)
-                    result = _merge_analysis_with_narrator(result, _existing_narrator)
-                    st.session_state.mode_a_characters = result
-                    log_event("modeA_char_analysis_done", {
-                        "characters": result.get("characters", []),
-                        "dialogue_count": len(result.get("dialogue_map", [])),
-                    })
-                    st.success(f"✅ {len(result.get('characters', [])) - 1}명의 캐릭터를 찾았습니다.")
-                    st.rerun()
-                except Exception as e:
-                    st.error(f"분석 실패: {e}")
-
-    # 캐릭터 프로필 — narrator는 항상 있으므로 무조건 표시
-    if True:
-        chars_data = st.session_state.mode_a_characters.get("characters", [])
-        # 안전장치: voice_label이 새 VOICE_PRESETS에 없으면 기본값으로 복구
-        for c in chars_data:
-            if c.get("voice_label") not in b_text_based.VOICE_PRESETS:
-                c["voice_label"] = b_text_based.GPT_VOICE_TO_UI_LABEL.get(
-                    c.get("voice_type", "narrator"), "🎙️ 나레이터"
-                )
-
-        st.markdown("##### 🎙️ 캐릭터 프로필 (목소리 지정)")
-        st.caption("첫 행의 **나레이터**는 본문 나레이션 전체에 적용됩니다. 따옴표 안 대사는 각 캐릭터 보이스로 합성.")
-        edited_chars = st.data_editor(
-            chars_data,
-            column_order=["id", "name", "voice_label"],
-            column_config={
-                "id": st.column_config.TextColumn("ID", disabled=True, width="small"),
-                "name": st.column_config.TextColumn("이름", width="medium"),
-                "voice_label": st.column_config.SelectboxColumn(
-                    "🎙️ 지정 목소리",
-                    options=list(b_text_based.VOICE_PRESETS.keys()),
-                    width="medium",
-                    required=True,
-                    help="이 캐릭터의 대사를 읽을 보이스를 선택하세요.",
-                ),
-            },
-            num_rows="fixed",
-            use_container_width=True,
-            key="mode_a_char_editor",
+        PROMPT = st.text_input(
+            "예고편의 전체적인 분위기를 정해주세요!",
+            value=st.session_state.modeA_prompt,
+            key="modeA_prompt_input",
         )
-        st.session_state.mode_a_characters["characters"] = edited_chars
+        st.session_state.modeA_prompt = PROMPT
 
-        # 🎧 보이스 미리듣기 — 보이스 종류별로 어떤 느낌인지 한 번에 들어볼 수 있도록.
-        # UI 부담을 줄이려고 expander 안에 selectbox + 듣기 버튼 1쌍만 둠.
-        with st.expander("🎧 보이스 미리듣기 (각 보이스 샘플 들어보고 고르기)", expanded=False):
-            vc_col_pick, vc_col_btn = st.columns([3, 1])
-            with vc_col_pick:
-                _voice_options = list(b_text_based.VOICE_PRESETS.keys())
-                _picked = st.selectbox(
-                    "들어볼 보이스",
-                    options=_voice_options,
-                    key="mode_a_voice_sample_pick",
-                )
-            with vc_col_btn:
-                st.markdown("&nbsp;", unsafe_allow_html=True)
-                _play_clicked = st.button("🎧 듣기", key="mode_a_voice_sample_btn")
-
-            if _play_clicked:
-                _clova_id = b_text_based.VOICE_PRESETS.get(_picked) or "njiyun"
-                log_event("modeA_voice_sample_play", {
-                    "label": _picked,
-                    "voice_id": _clova_id,
-                })
-                _sample_dir = SESSION_DIR / "voice_samples"
-                _sample_dir.mkdir(parents=True, exist_ok=True)
-                _sample_path = _sample_dir / f"sample_{_clova_id}_{MODE_A_TTS_ENGINE}.mp3"
-                if not _sample_path.exists():
-                    _sample_text = "안녕하세요. 저는 이런 목소리로 책을 읽어요."
-                    with st.spinner("샘플 합성 중..."):
-                        _ok = text_to_speech(
-                            _sample_text, str(_sample_path),
-                            speaker=_clova_id, engine=MODE_A_TTS_ENGINE,
-                            style_prompt="",
+        # mode_a_characters가 None이면 narrator만 있는 dict로 초기화
+        if st.session_state.mode_a_characters is None:
+            st.session_state.mode_a_characters = {
+                "characters": [_default_narrator_entry()],
+                "dialogue_map": [],
+            }
+        else:
+            # 분석 결과는 있는데 narrator가 빠져 있으면 첫 행에 삽입
+            _chars_list = st.session_state.mode_a_characters.get("characters", []) or []
+            if not any(c.get("id") == NARRATOR_ID for c in _chars_list):
+                _chars_list.insert(0, _default_narrator_entry())
+                st.session_state.mode_a_characters["characters"] = _chars_list
+    
+        # _has_chars = "narrator 외에 분석된 캐릭터가 있는가" — 자동 분석 트리거 판단용.
+        _analyzed_chars = [
+            c for c in st.session_state.mode_a_characters.get("characters", [])
+            if c.get("id") != NARRATOR_ID
+        ]
+        _has_chars = bool(_analyzed_chars)
+    
+        # 목소리 모드 / TTS 엔진은 워크숍 단순화를 위해 고정.
+        #   - voice_mode: "캐릭터별 보이스 사용" (분석 결과 활용)
+        #   - tts engine: Gemini 2.5 Pro (google-genai 경유, 톤/말투 prompt 반영)
+        st.session_state.mode_a_voice_mode_widget = "캐릭터별 보이스 사용 (분석 결과 활용)"
+        _selected_chars_mode = True
+    
+        # 캐릭터 분석 결과가 없으면 자동 분석 트리거 (첫 진입 시 1회).
+        _just_switched_to_chars = not _has_chars and not st.session_state.get("mode_a_char_analysis_attempted")
+    
+        def _merge_analysis_with_narrator(result, existing_narrator=None):
+            """캐릭터 분석 결과에 narrator 항목을 첫 행에 보존."""
+            chars = result.get("characters", []) or []
+            # voice_label 정규화
+            for c in chars:
+                vt = c.get("voice_type", "narrator")
+                c["voice_label"] = b_text_based.GPT_VOICE_TO_UI_LABEL.get(vt, "🎙️ 나레이터")
+            # 기존 narrator 보이스 설정 보존
+            narrator_entry = existing_narrator or _default_narrator_entry()
+            chars = [narrator_entry] + [c for c in chars if c.get("id") != NARRATOR_ID]
+            result["characters"] = chars
+            return result
+    
+        # 자동 캐릭터 분석 트리거 (첫 진입 시 1회만)
+        if _just_switched_to_chars and not _has_chars:
+            st.session_state.mode_a_char_analysis_attempted = True
+            full_text = txt_file.read_text(encoding="utf-8") if txt_file.exists() else ""
+            if full_text:
+                with st.spinner("등장인물 분석 중... (5~15초)"):
+                    try:
+                        # 분석 전 narrator 보이스 설정 보존
+                        _existing_narrator = next(
+                            (c for c in st.session_state.mode_a_characters.get("characters", [])
+                             if c.get("id") == NARRATOR_ID),
+                            None,
                         )
-                    if not _ok or not _sample_path.exists():
-                        st.error("샘플 생성 실패")
-                        _sample_path = None
-                if _sample_path and _sample_path.exists():
-                    st.session_state["mode_a_voice_sample_path"] = str(_sample_path)
-                    st.session_state["mode_a_voice_sample_label"] = _picked
-
-            _last_path = st.session_state.get("mode_a_voice_sample_path")
-            _last_label = st.session_state.get("mode_a_voice_sample_label")
-            if _last_path and os.path.exists(_last_path):
-                st.caption(f"▶️ {_last_label}")
-                st.audio(_last_path)
-
-        # 대사별 톤 프롬프트 에디터 - 선택한 페이지의 대사만 노출
-        all_dialogues = st.session_state.mode_a_characters.get("dialogue_map", []) or []
-        for d in all_dialogues:
-            d.setdefault("tone", "")
-
-        # 캐릭터 id ↔ 표시명 매핑. 같은 이름의 캐릭터가 둘 이상이면 id를 덧붙여 구분.
-        _name_count = {}
-        for _c in edited_chars:
-            _n = _c.get("name") or _c.get("id") or "?"
-            _name_count[_n] = _name_count.get(_n, 0) + 1
-
-        def _disp_name(c):
-            n = c.get("name") or c.get("id") or "?"
-            return f"{n} ({c.get('id', '?')})" if _name_count.get(n, 0) > 1 else n
-
-        _char_id_to_disp = {c.get("id"): _disp_name(c) for c in edited_chars}
-        _char_disp_to_id = {v: k for k, v in _char_id_to_disp.items()}
-        NARRATOR_LABEL = "(narrator)"
-        _speaker_options = list(_char_id_to_disp.values()) + [NARRATOR_LABEL]
-
-        # 선택한 이미지에서 페이지 번호 추출
-        _selected_page_nums = set()
-        for _img_name in st.session_state.selected_pages:
-            for _pat in (r"page_(\d+)", r"#(\d+)", r"(\d+)\.(?:png|jpg|jpeg|webp)$"):
-                _m = re.search(_pat, _img_name, re.IGNORECASE)
-                if _m:
-                    _selected_page_nums.add(int(_m.group(1)))
-                    break
-
-        # 디스플레이용: quote 기준 dedup. 같은 대사가 여러 페이지에 걸쳐 있으면 한 행으로 합침.
-        unique_view = []
-        seen_quotes = set()
-        for d in all_dialogues:
-            if d.get("page_num") not in _selected_page_nums:
-                continue
-            quote = (d.get("quote") or "").strip()
-            if not quote or quote in seen_quotes:
-                continue
-            seen_quotes.add(quote)
-            # 이 quote가 선택된 페이지 중 어디에 등장하는지 모두 수집
-            pages = sorted({
-                d2.get("page_num") for d2 in all_dialogues
-                if (d2.get("quote") or "").strip() == quote
-                and d2.get("page_num") in _selected_page_nums
-            })
-            # 기존 톤(같은 quote 항목 중 가장 먼저 채워진 비어있지 않은 값) 가져오기
-            existing_tone = ""
-            for d2 in all_dialogues:
-                if (d2.get("quote") or "").strip() == quote and (d2.get("tone") or "").strip():
-                    existing_tone = d2["tone"]
-                    break
-            unique_view.append({
-                "pages_display": ", ".join(str(p) for p in pages),
-                "speaker_name": _char_id_to_disp.get(d.get("speaker_id"), NARRATOR_LABEL),
-                "quote": quote,
-                "tone": existing_tone,
-            })
-
-        if unique_view:
-            st.markdown("##### 💬 대사별 톤/말투 지시 (선택)")
-            edited_view = st.data_editor(
-                unique_view,
-                column_order=["pages_display", "speaker_name", "quote", "tone"],
+                        result = b_text_based.analyze_characters_and_speakers(client, full_text)
+                        result = _merge_analysis_with_narrator(result, _existing_narrator)
+                        st.session_state.mode_a_characters = result
+                        log_event("modeA_char_analysis_done", {
+                            "characters": result.get("characters", []),
+                            "dialogue_count": len(result.get("dialogue_map", [])),
+                            "trigger": "auto_on_entry",
+                        })
+                        st.success(f"✅ {len(result.get('characters', [])) - 1}명의 캐릭터를 찾았습니다.")
+                        st.rerun()
+                    except Exception as e:
+                        st.error(f"분석 실패: {e}. 아래의 🎭 캐릭터 분석 실행 버튼으로 다시 시도해 주세요.")
+            else:
+                st.error("책 txt 파일을 읽을 수 없습니다.")
+    
+        # --------------------------------
+        # 🎭 캐릭터 분석 (자동 실행, 재분석 버튼은 fallback)
+        # --------------------------------
+        btn_label = "🔄 캐릭터 다시 분석" if _has_chars else "🎭 캐릭터 분석 실행"
+    
+        if st.button(btn_label, key="mode_a_char_analysis_btn", type="secondary"):
+            full_text = txt_file.read_text(encoding="utf-8") if txt_file.exists() else ""
+            if not full_text:
+                st.error("책 txt 파일을 읽을 수 없습니다.")
+            else:
+                with st.spinner("등장인물 분석 중... (5~15초)"):
+                    try:
+                        _existing_narrator = next(
+                            (c for c in st.session_state.mode_a_characters.get("characters", [])
+                             if c.get("id") == NARRATOR_ID),
+                            None,
+                        )
+                        result = b_text_based.analyze_characters_and_speakers(client, full_text)
+                        result = _merge_analysis_with_narrator(result, _existing_narrator)
+                        st.session_state.mode_a_characters = result
+                        log_event("modeA_char_analysis_done", {
+                            "characters": result.get("characters", []),
+                            "dialogue_count": len(result.get("dialogue_map", [])),
+                        })
+                        st.success(f"✅ {len(result.get('characters', [])) - 1}명의 캐릭터를 찾았습니다.")
+                        st.rerun()
+                    except Exception as e:
+                        st.error(f"분석 실패: {e}")
+    
+        # 캐릭터 프로필 — narrator는 항상 있으므로 무조건 표시
+        if True:
+            chars_data = st.session_state.mode_a_characters.get("characters", [])
+            # 안전장치: voice_label이 새 VOICE_PRESETS에 없으면 기본값으로 복구
+            for c in chars_data:
+                if c.get("voice_label") not in b_text_based.VOICE_PRESETS:
+                    c["voice_label"] = b_text_based.GPT_VOICE_TO_UI_LABEL.get(
+                        c.get("voice_type", "narrator"), "🎙️ 나레이터"
+                    )
+    
+            st.markdown("##### 🎙️ 캐릭터 프로필 (목소리 지정)")
+            st.caption("첫 행의 **나레이터**는 본문 나레이션 전체에 적용됩니다. 따옴표 안 대사는 각 캐릭터 보이스로 합성.")
+            edited_chars = st.data_editor(
+                chars_data,
+                column_order=["id", "name", "voice_label"],
                 column_config={
-                    "pages_display": st.column_config.TextColumn("Pages", disabled=True, width="small"),
-                    "speaker_name": st.column_config.SelectboxColumn(
-                        "화자",
-                        options=_speaker_options,
-                        width="small",
-                        required=False,
-                        help="한 장면에 여러 명의 대사가 섞여 있으면 여기서 각 대사의 화자를 골라 주세요. 자동 분석이 틀린 경우에도 수정 가능.",
-                    ),
-                    "quote": st.column_config.TextColumn("대사", disabled=True, width="large"),
-                    "tone": st.column_config.TextColumn(
-                        "톤/말투 지시 (선택)",
+                    "id": st.column_config.TextColumn("ID", disabled=True, width="small"),
+                    "name": st.column_config.TextColumn("이름", width="medium"),
+                    "voice_label": st.column_config.SelectboxColumn(
+                        "🎙️ 지정 목소리",
+                        options=list(b_text_based.VOICE_PRESETS.keys()),
                         width="medium",
-                        help="예: 흥분된 목소리, 슬프게 흐느끼며, 무서운 분위기로",
+                        required=True,
+                        help="이 캐릭터의 대사를 읽을 보이스를 선택하세요.",
                     ),
                 },
                 num_rows="fixed",
                 use_container_width=True,
-                hide_index=True,
-                key="mode_a_dialogue_editor",
+                key="mode_a_char_editor",
             )
-            # 편집한 화자/톤을 quote 기준으로 dialogue_map의 모든 동일 항목에 머지.
-            # 화자: 표시명 → speaker_id로 역매핑. (narrator)는 빈 id로 저장해 _lookup_quote
-            # 단계에서 narrator로 자연스럽게 폴백되게 함.
-            _tone_by_quote = {}
-            _spk_id_by_quote = {}
-            for r in edited_view:
-                q = (r.get("quote") or "").strip()
-                if not q:
-                    continue
-                _tone_by_quote[q] = (r.get("tone") or "").strip()
-                disp = (r.get("speaker_name") or "").strip()
-                if disp == NARRATOR_LABEL or not disp:
-                    _spk_id_by_quote[q] = ""
-                elif disp in _char_disp_to_id:
-                    _spk_id_by_quote[q] = _char_disp_to_id[disp]
-                # 매핑 안 되는 표시명은 dialogue_map의 기존 speaker_id 유지
-
+            st.session_state.mode_a_characters["characters"] = edited_chars
+    
+            # 🎧 보이스 미리듣기 — 보이스 종류별로 어떤 느낌인지 한 번에 들어볼 수 있도록.
+            # UI 부담을 줄이려고 expander 안에 selectbox + 듣기 버튼 1쌍만 둠.
+            with st.expander("🎧 보이스 미리듣기 (각 보이스 샘플 들어보고 고르기)", expanded=False):
+                vc_col_pick, vc_col_btn = st.columns([3, 1])
+                with vc_col_pick:
+                    _voice_options = list(b_text_based.VOICE_PRESETS.keys())
+                    _picked = st.selectbox(
+                        "들어볼 보이스",
+                        options=_voice_options,
+                        key="mode_a_voice_sample_pick",
+                    )
+                with vc_col_btn:
+                    st.markdown("&nbsp;", unsafe_allow_html=True)
+                    _play_clicked = st.button("🎧 듣기", key="mode_a_voice_sample_btn")
+    
+                if _play_clicked:
+                    _clova_id = b_text_based.VOICE_PRESETS.get(_picked) or "njiyun"
+                    log_event("modeA_voice_sample_play", {
+                        "label": _picked,
+                        "voice_id": _clova_id,
+                    })
+                    _sample_dir = SESSION_DIR / "voice_samples"
+                    _sample_dir.mkdir(parents=True, exist_ok=True)
+                    _sample_path = _sample_dir / f"sample_{_clova_id}_{MODE_A_TTS_ENGINE}.mp3"
+                    if not _sample_path.exists():
+                        _sample_text = "안녕하세요. 저는 이런 목소리로 책을 읽어요."
+                        with st.spinner("샘플 합성 중..."):
+                            _ok = text_to_speech(
+                                _sample_text, str(_sample_path),
+                                speaker=_clova_id, engine=MODE_A_TTS_ENGINE,
+                                style_prompt="",
+                            )
+                        if not _ok or not _sample_path.exists():
+                            st.error("샘플 생성 실패")
+                            _sample_path = None
+                    if _sample_path and _sample_path.exists():
+                        st.session_state["mode_a_voice_sample_path"] = str(_sample_path)
+                        st.session_state["mode_a_voice_sample_label"] = _picked
+    
+                _last_path = st.session_state.get("mode_a_voice_sample_path")
+                _last_label = st.session_state.get("mode_a_voice_sample_label")
+                if _last_path and os.path.exists(_last_path):
+                    st.caption(f"▶️ {_last_label}")
+                    st.audio(_last_path)
+    
+            # 대사별 톤 프롬프트 에디터 - 선택한 페이지의 대사만 노출
+            all_dialogues = st.session_state.mode_a_characters.get("dialogue_map", []) or []
             for d in all_dialogues:
-                q = (d.get("quote") or "").strip()
-                if q in _tone_by_quote:
-                    d["tone"] = _tone_by_quote[q]
-                if q in _spk_id_by_quote:
-                    d["speaker_id"] = _spk_id_by_quote[q]
-            st.session_state.mode_a_characters["dialogue_map"] = all_dialogues
-        elif not _selected_page_nums:
-            st.caption("📝 위에서 페이지를 먼저 선택하면 그 페이지의 대사가 여기 나옵니다.")
-        else:
-            st.caption("💬 선택한 페이지에는 따옴표 안 대사가 식별되지 않았어요.")
+                d.setdefault("tone", "")
+    
+            # 캐릭터 id ↔ 표시명 매핑. 같은 이름의 캐릭터가 둘 이상이면 id를 덧붙여 구분.
+            _name_count = {}
+            for _c in edited_chars:
+                _n = _c.get("name") or _c.get("id") or "?"
+                _name_count[_n] = _name_count.get(_n, 0) + 1
+    
+            def _disp_name(c):
+                n = c.get("name") or c.get("id") or "?"
+                return f"{n} ({c.get('id', '?')})" if _name_count.get(n, 0) > 1 else n
+    
+            _char_id_to_disp = {c.get("id"): _disp_name(c) for c in edited_chars}
+            _char_disp_to_id = {v: k for k, v in _char_id_to_disp.items()}
+            NARRATOR_LABEL = "(narrator)"
+            _speaker_options = list(_char_id_to_disp.values()) + [NARRATOR_LABEL]
+    
+            # 선택한 이미지에서 페이지 번호 추출
+            _selected_page_nums = set()
+            for _img_name in st.session_state.selected_pages:
+                for _pat in (r"page_(\d+)", r"#(\d+)", r"(\d+)\.(?:png|jpg|jpeg|webp)$"):
+                    _m = re.search(_pat, _img_name, re.IGNORECASE)
+                    if _m:
+                        _selected_page_nums.add(int(_m.group(1)))
+                        break
+    
+            # 디스플레이용: quote 기준 dedup. 같은 대사가 여러 페이지에 걸쳐 있으면 한 행으로 합침.
+            unique_view = []
+            seen_quotes = set()
+            for d in all_dialogues:
+                if d.get("page_num") not in _selected_page_nums:
+                    continue
+                quote = (d.get("quote") or "").strip()
+                if not quote or quote in seen_quotes:
+                    continue
+                seen_quotes.add(quote)
+                # 이 quote가 선택된 페이지 중 어디에 등장하는지 모두 수집
+                pages = sorted({
+                    d2.get("page_num") for d2 in all_dialogues
+                    if (d2.get("quote") or "").strip() == quote
+                    and d2.get("page_num") in _selected_page_nums
+                })
+                # 기존 톤(같은 quote 항목 중 가장 먼저 채워진 비어있지 않은 값) 가져오기
+                existing_tone = ""
+                for d2 in all_dialogues:
+                    if (d2.get("quote") or "").strip() == quote and (d2.get("tone") or "").strip():
+                        existing_tone = d2["tone"]
+                        break
+                unique_view.append({
+                    "pages_display": ", ".join(str(p) for p in pages),
+                    "speaker_name": _char_id_to_disp.get(d.get("speaker_id"), NARRATOR_LABEL),
+                    "quote": quote,
+                    "tone": existing_tone,
+                })
+    
+            if unique_view:
+                st.markdown("##### 💬 대사별 톤/말투 지시 (선택)")
+                edited_view = st.data_editor(
+                    unique_view,
+                    column_order=["pages_display", "speaker_name", "quote", "tone"],
+                    column_config={
+                        "pages_display": st.column_config.TextColumn("Pages", disabled=True, width="small"),
+                        "speaker_name": st.column_config.SelectboxColumn(
+                            "화자",
+                            options=_speaker_options,
+                            width="small",
+                            required=False,
+                            help="한 장면에 여러 명의 대사가 섞여 있으면 여기서 각 대사의 화자를 골라 주세요. 자동 분석이 틀린 경우에도 수정 가능.",
+                        ),
+                        "quote": st.column_config.TextColumn("대사", disabled=True, width="large"),
+                        "tone": st.column_config.TextColumn(
+                            "톤/말투 지시 (선택)",
+                            width="medium",
+                            help="예: 흥분된 목소리, 슬프게 흐느끼며, 무서운 분위기로",
+                        ),
+                    },
+                    num_rows="fixed",
+                    use_container_width=True,
+                    hide_index=True,
+                    key="mode_a_dialogue_editor",
+                )
+                # 편집한 화자/톤을 quote 기준으로 dialogue_map의 모든 동일 항목에 머지.
+                # 화자: 표시명 → speaker_id로 역매핑. (narrator)는 빈 id로 저장해 _lookup_quote
+                # 단계에서 narrator로 자연스럽게 폴백되게 함.
+                _tone_by_quote = {}
+                _spk_id_by_quote = {}
+                for r in edited_view:
+                    q = (r.get("quote") or "").strip()
+                    if not q:
+                        continue
+                    _tone_by_quote[q] = (r.get("tone") or "").strip()
+                    disp = (r.get("speaker_name") or "").strip()
+                    if disp == NARRATOR_LABEL or not disp:
+                        _spk_id_by_quote[q] = ""
+                    elif disp in _char_disp_to_id:
+                        _spk_id_by_quote[q] = _char_disp_to_id[disp]
+                    # 매핑 안 되는 표시명은 dialogue_map의 기존 speaker_id 유지
+    
+                for d in all_dialogues:
+                    q = (d.get("quote") or "").strip()
+                    if q in _tone_by_quote:
+                        d["tone"] = _tone_by_quote[q]
+                    if q in _spk_id_by_quote:
+                        d["speaker_id"] = _spk_id_by_quote[q]
+                st.session_state.mode_a_characters["dialogue_map"] = all_dialogues
+            elif not _selected_page_nums:
+                st.caption("📝 위에서 페이지를 먼저 선택하면 그 페이지의 대사가 여기 나옵니다.")
+            else:
+                st.caption("💬 선택한 페이지에는 따옴표 안 대사가 식별되지 않았어요.")
+
+        # Step 2 navigation
+        _render_modeA_nav(prev_ok=True, next_ok=True)
+        st.stop()
 
     # --------------------------------
     # ③ 실행 파트 (3단계 프로세스)
