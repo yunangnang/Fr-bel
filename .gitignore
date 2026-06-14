@@ -23,22 +23,18 @@ outputs/
 _streamlit_secrets_to_paste.toml
 .streamlit/
 
-# --- 데이터 자산: 데모용 2권만 포함, 나머지는 모두 제외 ---
+# --- 데이터 자산: 데모용 1권(괴물 가족의 초대)만 포함 ---
 
-# character 폴더: 기본 제외 후 데모용 2권만 허용
+# character 폴더: 기본 제외 후 데모 책만 허용
 character/*
-!character/리딩토탈_48개월_내지_아기토끼포포의가족_최종 2_ISBN/
-!character/리딩토탈_48개월_표지_아기토끼포포의가족_QR교체_수정_ISBN/
-!character/리딩토탈_48개월_내지_헨젤과그레텔_재쇄2_ISBN/
-!character/리딩토탈_48개월_표지_헨젤과그레텔_재쇄1_ISBN/
+!character/리딩토탈_72개월_내지_괴물 가족의 초대_220608_ISBN/
 !character/txt/
 
-# txt 폴더: 048 월령만, 그 중에서도 두 책 txt만 허용
+# txt 폴더: 072 월령의 데모 책 txt만 허용
 character/txt/*
-!character/txt/048/
-character/txt/048/*
-!character/txt/048/리딩토탈_48개월_내지_아기토끼포포의가족_최종 2_ISBN.txt
-!character/txt/048/리딩토탈_48개월_내지_헨젤과그레텔_재쇄2_ISBN.txt
+!character/txt/072/
+character/txt/072/*
+!character/txt/072/리딩토탈_72개월_내지_괴물 가족의 초대_220608_ISBN.txt
 
 # BGM 폴더: 데모용 2개만 포함
 BGM/*
