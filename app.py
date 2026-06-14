@@ -1415,7 +1415,11 @@ if mode == "이미지 선택 기반 제작":
     
                     if _has_scene_vid:
                         st.caption(f"🎬 프롬프트: {_scene_vid_info.get('prompt_used', '')[:80]}")
-                        st.video(_scene_vid_info["raw_path"])
+                        # 영상이 너무 크게 보이지 않도록 가운데 좁은 컬럼에 표시.
+                        # 사용자는 플레이어 우하단의 전체화면 버튼으로 크게 볼 수 있음.
+                        _svid_l, _svid_m, _svid_r = st.columns([1, 2, 1])
+                        with _svid_m:
+                            st.video(_scene_vid_info["raw_path"])
 
                     st.divider()
 
