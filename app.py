@@ -1418,218 +1418,227 @@ if mode == "이미지 선택 기반 제작":
         _render_modeA_nav(prev_ok=True, next_ok=_has_any_audio)
         st.stop()
 
+    # --------------------------------
+    # [WIZARD STEP 4] BGM 설정 + 최종 영상 합성
+    # --------------------------------
+    if modeA_step == 4:
+        log_stage_entry("mode_a_step4", {"book": selected_book})
+
     # ---------------------------------------------------------
     # [STEP 2] 오디오 검토 (장면별 TTS가 하나라도 생성된 경우)
     # ---------------------------------------------------------
-    if st.session_state.step2_audio is not None:
-        # 장면별로 이미 위에서 들을 수 있으므로 디폴트는 접힘 — 전체 한눈에 보고 싶을 때만 펼침.
-        with st.expander("🎧 음성 한눈에 보기 (전체 장면)", expanded=False):
-            for i, audio_info in enumerate(st.session_state.step2_audio):
-                path = audio_info["path"]
-                dur = audio_info["duration"]
-                script = st.session_state.step1_scripts[i]["text"]
-
-                # dur가 None일 경우 0.0으로 표시
-                dur_display = f"{dur:.1f}" if dur is not None else "0.0"
-
-                st.write(f"**장면 {i+1}** ({dur_display}초) : {script}")
-
-                if path and os.path.exists(path):
-                    st.audio(path)
+        if st.session_state.step2_audio is not None:
+            # 장면별로 이미 위에서 들을 수 있으므로 디폴트는 접힘 — 전체 한눈에 보고 싶을 때만 펼침.
+            with st.expander("🎧 음성 한눈에 보기 (전체 장면)", expanded=False):
+                for i, audio_info in enumerate(st.session_state.step2_audio):
+                    path = audio_info["path"]
+                    dur = audio_info["duration"]
+                    script = st.session_state.step1_scripts[i]["text"]
+    
+                    # dur가 None일 경우 0.0으로 표시
+                    dur_display = f"{dur:.1f}" if dur is not None else "0.0"
+    
+                    st.write(f"**장면 {i+1}** ({dur_display}초) : {script}")
+    
+                    if path and os.path.exists(path):
+                        st.audio(path)
+                    else:
+                        st.caption("🔇 음성 없음 (생성 실패 또는 무음)")
+    
+            # =========================================================
+            # [STEP 3] Runway 영상 생성 및 최종 병합
+            # =========================================================
+            st.divider()
+            st.markdown("#### 🎵 배경음악(BGM) 설정")
+    
+            use_bgm = st.checkbox("배경음악 사용 (페이지별 자동 매칭)", value=False)
+            bgm_volume = 0.15  # default, used if use_bgm is enabled later
+            if use_bgm:
+                if BGM_DIR.exists():
+                    bgm_files = sorted([f.name for f in BGM_DIR.iterdir() if f.suffix.lower() in ['.wav', '.mp3', '.m4a']])
+                    if bgm_files:
+                        bgm_volume = st.slider("BGM 볼륨 (%):", 5, 50, 15) / 100.0
+                        st.info(f"📂 BGM 폴더 발견: {len(bgm_files)}개 파일")
+                        st.caption("각 페이지 번호에 맞는 BGM이 자동으로 선택됩니다.")
+                    else:
+                        st.warning(f"BGM 폴더에 오디오 파일이 없습니다: {BGM_DIR}")
+                        use_bgm = False
                 else:
-                    st.caption("🔇 음성 없음 (생성 실패 또는 무음)")
-
-        # =========================================================
-        # [STEP 3] Runway 영상 생성 및 최종 병합
-        # =========================================================
-        st.divider()
-        st.markdown("#### 🎵 배경음악(BGM) 설정")
-
-        use_bgm = st.checkbox("배경음악 사용 (페이지별 자동 매칭)", value=False)
-        bgm_volume = 0.15  # default, used if use_bgm is enabled later
-        if use_bgm:
-            if BGM_DIR.exists():
-                bgm_files = sorted([f.name for f in BGM_DIR.iterdir() if f.suffix.lower() in ['.wav', '.mp3', '.m4a']])
-                if bgm_files:
-                    bgm_volume = st.slider("BGM 볼륨 (%):", 5, 50, 15) / 100.0
-                    st.info(f"📂 BGM 폴더 발견: {len(bgm_files)}개 파일")
-                    st.caption("각 페이지 번호에 맞는 BGM이 자동으로 선택됩니다.")
-                else:
-                    st.warning(f"BGM 폴더에 오디오 파일이 없습니다: {BGM_DIR}")
+                    st.warning(f"BGM 폴더가 없습니다: {BGM_DIR}")
                     use_bgm = False
-            else:
-                st.warning(f"BGM 폴더가 없습니다: {BGM_DIR}")
-                use_bgm = False
-
-        # =========================================================
-        # [STEP 3] 최종 영상 합성 — 장면별로 만든 Runway·TTS·BGM을 한 영상으로 묶음
-        # =========================================================
-        st.divider()
-        st.markdown("#### 3️⃣ 최종 영상 합성")
-        log_stage_entry("mode_a_step3", {"book": selected_book})
-
-        # 캐시된 장면별 Runway 개수 표시 → 사용자가 크레딧 차감 여부 미리 파악
-        _cached_count = 0
-        if st.session_state.modeA_scene_videos:
-            for _v in st.session_state.modeA_scene_videos:
-                if _v and _v.get("raw_path") and os.path.exists(_v.get("raw_path") or ""):
-                    _cached_count += 1
-        _total_scenes = len(st.session_state.selected_pages)
-        _missing = _total_scenes - _cached_count
-
-        if _missing == 0 and _total_scenes > 0:
-            st.success(f"✅ 모든 장면({_total_scenes}개) Runway 영상이 준비됨. 합성만 진행되어 크레딧 차감 없음.")
-        elif _missing > 0:
-            st.warning(
-                f"⚠️ {_total_scenes}개 장면 중 {_missing}개가 아직 Runway 미생성 상태예요. "
-                f"이 버튼을 누르면 미생성 장면만 새로 Runway 호출 (크레딧 차감)."
-            )
-
-        if st.button("🎬 최종 영상 합성", type="primary"):
-            log_button_click("mode_a_step3_compose", {
-                "scene_count": len(st.session_state.selected_pages),
-                "cached_runway": _cached_count,
-                "missing_runway": _missing,
-                "use_bgm": use_bgm,
-            })
-            uid = st.session_state.proc_uid
-            OUT = SESSION_DIR
-            video_paths = []
-            log_event("modeA_step3_start", {
-                "uid": uid,
-                "scene_count": len(st.session_state.selected_pages),
-                "prompt": PROMPT,
-            })
-            
-            progress_bar = st.progress(0)
-            status_text = st.empty()
-            total = len(st.session_state.selected_pages)
-            
-            # 1. 영상 생성
-            for i, name in enumerate(st.session_state.selected_pages):
-                status_text.text(f"[{i+1}/{total}] '{name}' 영상 생성 중...")
-                
-                img_path = folder / name
-                tts_dur = st.session_state.step2_audio[i]["duration"]
-                
-                # 길이 결정
-                if tts_dur is None:
-                    runway_dur = DEFAULT_DURATION
-                elif tts_dur <= 5.0:
-                    runway_dur = 5
-                else:
-                    runway_dur = 10
-                
-                # 장면별 Runway 프롬프트 우선, 없으면 글로벌 PROMPT
-                _scene_rw_prompt = ""
-                try:
-                    _scene_rw_prompt = (st.session_state.step1_scripts[i].get("runway_prompt") or "").strip()
-                except (IndexError, KeyError, AttributeError):
-                    _scene_rw_prompt = ""
-                _runway_prompt = _scene_rw_prompt or PROMPT
-
-                # Step 1.5에서 장면별로 이미 Runway 돌렸으면 그 결과 재사용
-                # (사용자가 마음에 든 버전을 그대로 영상에 적용 — 크레딧 절약).
-                _cached_vid = None
-                if (st.session_state.modeA_scene_videos
-                        and i < len(st.session_state.modeA_scene_videos)):
-                    _cached_vid = st.session_state.modeA_scene_videos[i]
-                _cached_raw = (
-                    _cached_vid.get("raw_path")
-                    if _cached_vid and _cached_vid.get("raw_path")
-                    else None
+    
+            # =========================================================
+            # [STEP 3] 최종 영상 합성 — 장면별로 만든 Runway·TTS·BGM을 한 영상으로 묶음
+            # =========================================================
+            st.divider()
+            st.markdown("#### 3️⃣ 최종 영상 합성")
+            log_stage_entry("mode_a_step3", {"book": selected_book})
+    
+            # 캐시된 장면별 Runway 개수 표시 → 사용자가 크레딧 차감 여부 미리 파악
+            _cached_count = 0
+            if st.session_state.modeA_scene_videos:
+                for _v in st.session_state.modeA_scene_videos:
+                    if _v and _v.get("raw_path") and os.path.exists(_v.get("raw_path") or ""):
+                        _cached_count += 1
+            _total_scenes = len(st.session_state.selected_pages)
+            _missing = _total_scenes - _cached_count
+    
+            if _missing == 0 and _total_scenes > 0:
+                st.success(f"✅ 모든 장면({_total_scenes}개) Runway 영상이 준비됨. 합성만 진행되어 크레딧 차감 없음.")
+            elif _missing > 0:
+                st.warning(
+                    f"⚠️ {_total_scenes}개 장면 중 {_missing}개가 아직 Runway 미생성 상태예요. "
+                    f"이 버튼을 누르면 미생성 장면만 새로 Runway 호출 (크레딧 차감)."
                 )
-                _use_cache = bool(_cached_raw and os.path.exists(_cached_raw))
-
-                try:
-                    if _use_cache:
-                        raw_path = Path(_cached_raw)
-                        status_text.text(f"[{i+1}/{total}] '{name}' 캐시된 영상 재사용")
-                    else:
-                        result = generate_video_from_image(str(img_path), _runway_prompt, runway_dur)
-                        video_url = extract_video_url(result)
-                        raw_path = OUT / f"clip_{i:02d}_{uid}_raw.mp4"
-                        download_video(video_url, raw_path)
-
-                    # 영상 길이를 TTS 길이에 정확히 맞춤. TTS가 영상보다 짧으면 trim,
-                    # 길면 마지막 프레임 freeze-frame으로 extend (그래야 음성이 안 잘림).
-                    out_path = OUT / f"clip_{i:02d}_{uid}.mp4"
-                    if tts_dur:
-                        fit_video_to_duration(str(raw_path), tts_dur, str(out_path))
-                    else:
-                        shutil.copy(str(raw_path), str(out_path))
-                    video_paths.append(out_path)
+    
+            if st.button("🎬 최종 영상 합성", type="primary"):
+                log_button_click("mode_a_step3_compose", {
+                    "scene_count": len(st.session_state.selected_pages),
+                    "cached_runway": _cached_count,
+                    "missing_runway": _missing,
+                    "use_bgm": use_bgm,
+                })
+                uid = st.session_state.proc_uid
+                OUT = SESSION_DIR
+                video_paths = []
+                log_event("modeA_step3_start", {
+                    "uid": uid,
+                    "scene_count": len(st.session_state.selected_pages),
+                    "prompt": PROMPT,
+                })
+                
+                progress_bar = st.progress(0)
+                status_text = st.empty()
+                total = len(st.session_state.selected_pages)
+                
+                # 1. 영상 생성
+                for i, name in enumerate(st.session_state.selected_pages):
+                    status_text.text(f"[{i+1}/{total}] '{name}' 영상 생성 중...")
                     
-                except Exception as e:
-                    st.error(f"영상 생성 실패 ({name}): {e}")
-                    video_paths.append(None)
-                
-                progress_bar.progress((i + 1) / total)
-                
-            # 2. 합성
-            status_text.text("자막 및 오디오 합성 중...")
-            final_clips = []
-            
-            for i, vid in enumerate(video_paths):
-                if vid is None: continue
-
-                sub = st.session_state.step1_scripts[i]["text"]
-                audio = st.session_state.step2_audio[i]["path"]
-                img_name = st.session_state.selected_pages[i]
-
-                # 자막
-                sub_out = str(vid).replace(".mp4", "_sub.mp4")
-                add_subtitle_to_video(str(vid), sub, sub_out, scene_index=i)
-
-                # 오디오 (BGM 포함 - 페이지별 자동 매칭)
-                final_out = sub_out.replace("_sub.mp4", "_audio.mp4")
-                if audio and os.path.exists(audio):
-                    # 해당 페이지의 BGM 찾기
-                    page_bgm = None
-                    if use_bgm:
-                        page_bgm = get_bgm_for_page(img_name, BGM_DIR)
-
-                    if page_bgm and page_bgm.exists():
-                        add_audio_to_video(sub_out, audio, final_out, bgm_path=str(page_bgm), bgm_volume=bgm_volume)
-                        st.caption(f"🎵 Scene {i+1} ({img_name}): BGM '{page_bgm.name}' 적용")
+                    img_path = folder / name
+                    tts_dur = st.session_state.step2_audio[i]["duration"]
+                    
+                    # 길이 결정
+                    if tts_dur is None:
+                        runway_dur = DEFAULT_DURATION
+                    elif tts_dur <= 5.0:
+                        runway_dur = 5
                     else:
-                        add_audio_to_video(sub_out, audio, final_out)
-                        if use_bgm:
-                            st.caption(f"⚠️ Scene {i+1} ({img_name}): 매칭되는 BGM 없음")
-                else:
-                    shutil.copy(sub_out, final_out)
-
-                final_clips.append(final_out)
+                        runway_dur = 10
+                    
+                    # 장면별 Runway 프롬프트 우선, 없으면 글로벌 PROMPT
+                    _scene_rw_prompt = ""
+                    try:
+                        _scene_rw_prompt = (st.session_state.step1_scripts[i].get("runway_prompt") or "").strip()
+                    except (IndexError, KeyError, AttributeError):
+                        _scene_rw_prompt = ""
+                    _runway_prompt = _scene_rw_prompt or PROMPT
+    
+                    # Step 1.5에서 장면별로 이미 Runway 돌렸으면 그 결과 재사용
+                    # (사용자가 마음에 든 버전을 그대로 영상에 적용 — 크레딧 절약).
+                    _cached_vid = None
+                    if (st.session_state.modeA_scene_videos
+                            and i < len(st.session_state.modeA_scene_videos)):
+                        _cached_vid = st.session_state.modeA_scene_videos[i]
+                    _cached_raw = (
+                        _cached_vid.get("raw_path")
+                        if _cached_vid and _cached_vid.get("raw_path")
+                        else None
+                    )
+                    _use_cache = bool(_cached_raw and os.path.exists(_cached_raw))
+    
+                    try:
+                        if _use_cache:
+                            raw_path = Path(_cached_raw)
+                            status_text.text(f"[{i+1}/{total}] '{name}' 캐시된 영상 재사용")
+                        else:
+                            result = generate_video_from_image(str(img_path), _runway_prompt, runway_dur)
+                            video_url = extract_video_url(result)
+                            raw_path = OUT / f"clip_{i:02d}_{uid}_raw.mp4"
+                            download_video(video_url, raw_path)
+    
+                        # 영상 길이를 TTS 길이에 정확히 맞춤. TTS가 영상보다 짧으면 trim,
+                        # 길면 마지막 프레임 freeze-frame으로 extend (그래야 음성이 안 잘림).
+                        out_path = OUT / f"clip_{i:02d}_{uid}.mp4"
+                        if tts_dur:
+                            fit_video_to_duration(str(raw_path), tts_dur, str(out_path))
+                        else:
+                            shutil.copy(str(raw_path), str(out_path))
+                        video_paths.append(out_path)
+                        
+                    except Exception as e:
+                        st.error(f"영상 생성 실패 ({name}): {e}")
+                        video_paths.append(None)
+                    
+                    progress_bar.progress((i + 1) / total)
+                    
+                # 2. 합성
+                status_text.text("자막 및 오디오 합성 중...")
+                final_clips = []
                 
-            # 3. 최종 병합
-            status_text.text("최종 파일 저장 중...")
-            final_video = OUT / f"short_final_{uid}.mp4"
-            concat_videos_with_audio(final_clips, str(final_video))
+                for i, vid in enumerate(video_paths):
+                    if vid is None: continue
+    
+                    sub = st.session_state.step1_scripts[i]["text"]
+                    audio = st.session_state.step2_audio[i]["path"]
+                    img_name = st.session_state.selected_pages[i]
+    
+                    # 자막
+                    sub_out = str(vid).replace(".mp4", "_sub.mp4")
+                    add_subtitle_to_video(str(vid), sub, sub_out, scene_index=i)
+    
+                    # 오디오 (BGM 포함 - 페이지별 자동 매칭)
+                    final_out = sub_out.replace("_sub.mp4", "_audio.mp4")
+                    if audio and os.path.exists(audio):
+                        # 해당 페이지의 BGM 찾기
+                        page_bgm = None
+                        if use_bgm:
+                            page_bgm = get_bgm_for_page(img_name, BGM_DIR)
+    
+                        if page_bgm and page_bgm.exists():
+                            add_audio_to_video(sub_out, audio, final_out, bgm_path=str(page_bgm), bgm_volume=bgm_volume)
+                            st.caption(f"🎵 Scene {i+1} ({img_name}): BGM '{page_bgm.name}' 적용")
+                        else:
+                            add_audio_to_video(sub_out, audio, final_out)
+                            if use_bgm:
+                                st.caption(f"⚠️ Scene {i+1} ({img_name}): 매칭되는 BGM 없음")
+                    else:
+                        shutil.copy(sub_out, final_out)
+    
+                    final_clips.append(final_out)
+                    
+                # 3. 최종 병합
+                status_text.text("최종 파일 저장 중...")
+                final_video = OUT / f"short_final_{uid}.mp4"
+                concat_videos_with_audio(final_clips, str(final_video))
+    
+                progress_bar.progress(100)
+                status_text.text("완료!")
+    
+                # 세션에 저장하여 리런 후에도 유지
+                st.session_state.step3_final_video = str(final_video)
+                log_event("modeA_step3_done", {
+                    "final_video": str(final_video),
+                    "scene_count": len(final_clips),
+                })
+                st.rerun()
+    
+        # ---------------------------------------------------------
+        # [STEP 3.5] 최종 영상 표시 (리런 후에도 유지)
+        # ---------------------------------------------------------
+        if st.session_state.step3_final_video and os.path.exists(st.session_state.step3_final_video):
+            st.success("🎉 모든 작업이 완료되었습니다!")
+            st.video(st.session_state.step3_final_video)
+    
+            with open(st.session_state.step3_final_video, "rb") as f:
+                st.download_button(
+                    " 최종 영상 다운로드",
+                    f,
+                    file_name=Path(st.session_state.step3_final_video).name
+                )
 
-            progress_bar.progress(100)
-            status_text.text("완료!")
-
-            # 세션에 저장하여 리런 후에도 유지
-            st.session_state.step3_final_video = str(final_video)
-            log_event("modeA_step3_done", {
-                "final_video": str(final_video),
-                "scene_count": len(final_clips),
-            })
-            st.rerun()
-
-    # ---------------------------------------------------------
-    # [STEP 3.5] 최종 영상 표시 (리런 후에도 유지)
-    # ---------------------------------------------------------
-    if st.session_state.step3_final_video and os.path.exists(st.session_state.step3_final_video):
-        st.success("🎉 모든 작업이 완료되었습니다!")
-        st.video(st.session_state.step3_final_video)
-
-        with open(st.session_state.step3_final_video, "rb") as f:
-            st.download_button(
-                " 최종 영상 다운로드",
-                f,
-                file_name=Path(st.session_state.step3_final_video).name
-            )
+        # Step 4 navigation — 마지막 단계라 next 없음
+        _render_modeA_nav(prev_ok=True, next_ok=False)
 
 
 #-------------------------------
