@@ -256,6 +256,51 @@ if st.session_state.current_mode != mode:
 #-----------------------------
 if mode == "이미지 선택 기반 제작":
     log_stage_entry("mode_a_entry", {"book": selected_book})
+
+    # =========================================================
+    # WIZARD: 단계별 페이지 분리. 현재는 인프라만 추가됨 — 다음 phase에서
+    # 각 단계 콘텐츠를 if modeA_step == N으로 감쌈.
+    # 1: 이미지 선택 / 2: 캐릭터 보이스 / 3: 장면 편집 / 4: BGM + 최종
+    # =========================================================
+    MODEA_STEPS = [
+        ("이미지 선택", "🖼️"),
+        ("캐릭터 보이스", "🎙️"),
+        ("장면 편집", "✏️"),
+        ("최종 합성", "🎬"),
+    ]
+    if "modeA_wizard_step" not in st.session_state:
+        st.session_state.modeA_wizard_step = 1
+    modeA_step = st.session_state.modeA_wizard_step
+
+    def _render_modeA_step_indicator(current: int):
+        """상단에 단계 진행도(● ● ○ ○) 표시."""
+        cols = st.columns(len(MODEA_STEPS))
+        for i, (label, icon) in enumerate(MODEA_STEPS, start=1):
+            with cols[i - 1]:
+                marker = "✅" if i < current else ("🟢" if i == current else "⚪️")
+                weight = "**" if i == current else ""
+                st.markdown(f"<div style='text-align:center'>{marker}<br>{weight}{icon} {label}{weight}</div>",
+                            unsafe_allow_html=True)
+
+    def _render_modeA_nav(prev_ok: bool, next_ok: bool, next_label: str = "다음 →"):
+        """하단에 [← 이전] [다음 →] 버튼. next_ok=False면 다음 버튼 비활성."""
+        st.markdown("---")
+        c_prev, c_spacer, c_next = st.columns([1, 2, 1])
+        with c_prev:
+            if prev_ok and st.button("← 이전", key=f"modeA_nav_prev_{st.session_state.modeA_wizard_step}"):
+                st.session_state.modeA_wizard_step -= 1
+                log_button_click("modeA_wizard_prev", {"to_step": st.session_state.modeA_wizard_step})
+                st.rerun()
+        with c_next:
+            if next_ok and st.button(next_label, key=f"modeA_nav_next_{st.session_state.modeA_wizard_step}",
+                                     type="primary"):
+                st.session_state.modeA_wizard_step += 1
+                log_button_click("modeA_wizard_next", {"to_step": st.session_state.modeA_wizard_step})
+                st.rerun()
+
+    _render_modeA_step_indicator(modeA_step)
+    st.divider()
+
     st.info("🖼️ 마음에 드는 삽화를 먼저 고르면, AI가 이야기를 이어줍니다.")
     # --------------------------------
     # TXT 매칭 함수 (삽화 선택과 대본 생성 양쪽에서 사용)
