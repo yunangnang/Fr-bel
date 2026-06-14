@@ -219,15 +219,18 @@ st.success(f" {len(images)}개의 삽화 로드 완료")
 #-----------------
 # 0. 작업 방식 선택
 #------------------
-st.divider()
-st.subheader("0.작업 방식 선택")
-
 log_stage_entry("mode_select")
-mode = st.radio(
-    "어떤 방식으로 영상을 만드시겠습니까?",
-    ["이미지 선택 기반 제작", "텍스트 분석 기반 예고편 제작"],
-    captions=["내가 고른 삽화에 맞춰 대본을 씁니다.", "전체 내용을 요약해 예고편을 짜고, 어울리는 그림을 AI가 추천합니다."]
-)
+# Mode A wizard 진입 후(step >= 2)는 모드 라디오 숨김. 책 선택은 그대로 노출.
+if st.session_state.get("modeA_wizard_step", 1) > 1:
+    mode = st.session_state.get("current_mode") or "이미지 선택 기반 제작"
+else:
+    st.divider()
+    st.subheader("0.작업 방식 선택")
+    mode = st.radio(
+        "어떤 방식으로 영상을 만드시겠습니까?",
+        ["이미지 선택 기반 제작", "텍스트 분석 기반 예고편 제작"],
+        captions=["내가 고른 삽화에 맞춰 대본을 씁니다.", "전체 내용을 요약해 예고편을 짜고, 어울리는 그림을 AI가 추천합니다."]
+    )
 
 # 모드 변경 시 세션 상태 초기화 (필요시)
 if "current_mode" not in st.session_state:
