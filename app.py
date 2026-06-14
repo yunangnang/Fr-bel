@@ -1002,12 +1002,10 @@ if mode == "이미지 선택 기반 제작":
         # [STEP 1] 페이지 원문 그대로 자막으로 사용 (Mode A 정책: 원본 텍스트)
         # =========================================================
         st.markdown("#### 1️⃣ 자막 불러오기 및 수정")
-    
-        if st.button("1단계: 페이지 원문으로 자막 만들기", type="primary"):
-            log_button_click("mode_a_step1_load", {
-                "book": selected_book,
-                "scene_count": len(st.session_state.selected_pages),
-            })
+
+        def _modeA_generate_step1_scripts():
+            """선택된 페이지의 원문 텍스트를 그대로 자막으로 사용. 화자는 narrator 기본값,
+            텍스트 없는 페이지는 speaker='none'으로 TTS 스킵. 펼침면 dedupe도 처리."""
             st.session_state.proc_uid = uuid.uuid4().hex[:8]
             log_event("modeA_step1_start", {
                 "book": selected_book,
@@ -1016,10 +1014,7 @@ if mode == "이미지 선택 기반 제작":
                 "use_bgm": use_bgm,
                 "bgm_volume": bgm_volume if use_bgm else None,
             })
-    
-            # 선택된 페이지의 원문 텍스트를 그대로 자막으로 사용. 화자는 narrator 기본값,
-            # 텍스트 없는 페이지는 speaker="none"으로 TTS 스킵.
-            # 펼침면 dedupe: 직전 장면과 텍스트가 같으면 자막+오디오 모두 비움 (이미지만 노출).
+
             subtitle_data = []
             page_texts = []
             prev_text = ""
@@ -1029,15 +1024,14 @@ if mode == "이미지 선택 기반 제작":
                 if not text:
                     subtitle_data.append({"text": "", "speaker": "none", "extra_lines": []})
                 elif text == prev_text:
-                    # 직전 장면과 동일 → dedup. 이미지만 보여주고 자막/오디오는 생략.
                     subtitle_data.append({"text": "", "speaker": "none", "_dedupe_of_prev": True, "extra_lines": []})
                 else:
                     subtitle_data.append({"text": text, "speaker": "narrator", "extra_lines": []})
                     prev_text = text
-    
+
             st.session_state.raw_texts = page_texts
             st.session_state.step1_scripts = subtitle_data
-    
+
             try:
                 with open(SESSION_DIR / f"modeA_step1_scripts_{st.session_state.proc_uid}.json", "w", encoding="utf-8") as _f:
                     import json as _json
@@ -1048,13 +1042,27 @@ if mode == "이미지 선택 기반 제작":
                     }, _f, ensure_ascii=False, indent=2)
             except Exception as _e:
                 print(f"[log] step1 save failed: {_e}")
-    
+
             log_event("modeA_step1_done", {
                 "scenes": len(subtitle_data),
                 "scripts": subtitle_data,
             })
-    
+
             st.session_state.step2_audio = None
+
+        # 단계 진입 시 step1_scripts가 비어있으면 자동으로 초안 생성 (사용자 클릭 불필요).
+        if st.session_state.step1_scripts is None:
+            log_button_click("mode_a_step1_auto", {
+                "book": selected_book,
+                "scene_count": len(st.session_state.selected_pages),
+            })
+            _modeA_generate_step1_scripts()
+            st.rerun()
+
+        # 다시 만들기 옵션 — 사용자가 수정한 걸 버리고 원문으로 되돌리고 싶을 때
+        if st.button("🔄 자막 다시 불러오기", key="modeA_step1_regen"):
+            log_button_click("mode_a_step1_regen", {"book": selected_book})
+            _modeA_generate_step1_scripts()
             st.rerun()
     
         # ---------------------------------------------------------
