@@ -988,425 +988,435 @@ if mode == "이미지 선택 기반 제작":
         st.stop()
 
     # --------------------------------
-    # ③ 실행 파트 (3단계 프로세스)
+    # [WIZARD STEP 3] 장면 편집 (텍스트 + 추가대사 + TTS + Runway)
     # --------------------------------
-    st.divider()
-    st.subheader("③ 생성 프로세스")
-    log_stage_entry("mode_a_step1", {"book": selected_book})
+    if modeA_step == 3:
+        st.divider()
+        st.subheader("③ 생성 프로세스")
+        log_stage_entry("mode_a_step1", {"book": selected_book})
 
-    # =========================================================
-    # [STEP 1] 페이지 원문 그대로 자막으로 사용 (Mode A 정책: 원본 텍스트)
-    # =========================================================
-    st.markdown("#### 1️⃣ 자막 불러오기 및 수정")
-
-    if st.button("1단계: 페이지 원문으로 자막 만들기", type="primary"):
-        log_button_click("mode_a_step1_load", {
-            "book": selected_book,
-            "scene_count": len(st.session_state.selected_pages),
-        })
-        st.session_state.proc_uid = uuid.uuid4().hex[:8]
-        log_event("modeA_step1_start", {
-            "book": selected_book,
-            "prompt": PROMPT,
-            "default_duration": DEFAULT_DURATION,
-            "use_bgm": use_bgm,
-            "bgm_volume": bgm_volume if use_bgm else None,
-        })
-
-        # 선택된 페이지의 원문 텍스트를 그대로 자막으로 사용. 화자는 narrator 기본값,
-        # 텍스트 없는 페이지는 speaker="none"으로 TTS 스킵.
-        # 펼침면 dedupe: 직전 장면과 텍스트가 같으면 자막+오디오 모두 비움 (이미지만 노출).
-        subtitle_data = []
-        page_texts = []
-        prev_text = ""
-        for name in st.session_state.selected_pages:
-            text = extract_text_for_image(name, txt_file)
-            page_texts.append((name, text))
-            if not text:
-                subtitle_data.append({"text": "", "speaker": "none", "extra_lines": []})
-            elif text == prev_text:
-                # 직전 장면과 동일 → dedup. 이미지만 보여주고 자막/오디오는 생략.
-                subtitle_data.append({"text": "", "speaker": "none", "_dedupe_of_prev": True, "extra_lines": []})
-            else:
-                subtitle_data.append({"text": text, "speaker": "narrator", "extra_lines": []})
-                prev_text = text
-
-        st.session_state.raw_texts = page_texts
-        st.session_state.step1_scripts = subtitle_data
-
-        try:
-            with open(SESSION_DIR / f"modeA_step1_scripts_{st.session_state.proc_uid}.json", "w", encoding="utf-8") as _f:
-                import json as _json
-                _json.dump({
-                    "book": selected_book,
-                    "raw_texts": page_texts,
-                    "initial_scripts": subtitle_data,
-                }, _f, ensure_ascii=False, indent=2)
-        except Exception as _e:
-            print(f"[log] step1 save failed: {_e}")
-
-        log_event("modeA_step1_done", {
-            "scenes": len(subtitle_data),
-            "scripts": subtitle_data,
-        })
-
-        st.session_state.step2_audio = None
-        st.rerun()
-
-    # ---------------------------------------------------------
-    # [STEP 1.5] 대본 검토 및 수정 UI (1단계 완료 시 표시)
-    # ---------------------------------------------------------
-    if st.session_state.step1_scripts is not None:
-        st.success("✅ 대본 초안이 생성되었습니다. 내용을 수정하고 2단계로 넘어가세요.")
-        
-        # 수정된 내용을 담을 리스트 (UI 렌더링용이 아니라 실제 데이터 저장용)
-        # Streamlit은 위젯 값을 바로 세션에 반영하지 않으므로, form이나 콜백을 쓰거나
-        # 아래처럼 화면에 뿌려진 widget의 값을 나중에 읽어와야 합니다.
-        
-        with st.expander("📝 대본 수정하기 (여기를 펼쳐서 내용을 확인하세요)", expanded=True):
-            updated_scripts = []
+        # =========================================================
+        # [STEP 1] 페이지 원문 그대로 자막으로 사용 (Mode A 정책: 원본 텍스트)
+        # =========================================================
+        st.markdown("#### 1️⃣ 자막 불러오기 및 수정")
+    
+        if st.button("1단계: 페이지 원문으로 자막 만들기", type="primary"):
+            log_button_click("mode_a_step1_load", {
+                "book": selected_book,
+                "scene_count": len(st.session_state.selected_pages),
+            })
+            st.session_state.proc_uid = uuid.uuid4().hex[:8]
+            log_event("modeA_step1_start", {
+                "book": selected_book,
+                "prompt": PROMPT,
+                "default_duration": DEFAULT_DURATION,
+                "use_bgm": use_bgm,
+                "bgm_volume": bgm_volume if use_bgm else None,
+            })
+    
+            # 선택된 페이지의 원문 텍스트를 그대로 자막으로 사용. 화자는 narrator 기본값,
+            # 텍스트 없는 페이지는 speaker="none"으로 TTS 스킵.
+            # 펼침면 dedupe: 직전 장면과 텍스트가 같으면 자막+오디오 모두 비움 (이미지만 노출).
+            subtitle_data = []
+            page_texts = []
+            prev_text = ""
+            for name in st.session_state.selected_pages:
+                text = extract_text_for_image(name, txt_file)
+                page_texts.append((name, text))
+                if not text:
+                    subtitle_data.append({"text": "", "speaker": "none", "extra_lines": []})
+                elif text == prev_text:
+                    # 직전 장면과 동일 → dedup. 이미지만 보여주고 자막/오디오는 생략.
+                    subtitle_data.append({"text": "", "speaker": "none", "_dedupe_of_prev": True, "extra_lines": []})
+                else:
+                    subtitle_data.append({"text": text, "speaker": "narrator", "extra_lines": []})
+                    prev_text = text
+    
+            st.session_state.raw_texts = page_texts
+            st.session_state.step1_scripts = subtitle_data
+    
+            try:
+                with open(SESSION_DIR / f"modeA_step1_scripts_{st.session_state.proc_uid}.json", "w", encoding="utf-8") as _f:
+                    import json as _json
+                    _json.dump({
+                        "book": selected_book,
+                        "raw_texts": page_texts,
+                        "initial_scripts": subtitle_data,
+                    }, _f, ensure_ascii=False, indent=2)
+            except Exception as _e:
+                print(f"[log] step1 save failed: {_e}")
+    
+            log_event("modeA_step1_done", {
+                "scenes": len(subtitle_data),
+                "scripts": subtitle_data,
+            })
+    
+            st.session_state.step2_audio = None
+            st.rerun()
+    
+        # ---------------------------------------------------------
+        # [STEP 1.5] 대본 검토 및 수정 UI (1단계 완료 시 표시)
+        # ---------------------------------------------------------
+        if st.session_state.step1_scripts is not None:
+            st.success("✅ 대본 초안이 생성되었습니다. 내용을 수정하고 2단계로 넘어가세요.")
             
-            # 장면별 입력창 표시
-            for i, item in enumerate(st.session_state.step1_scripts):
-                img_name = st.session_state.selected_pages[i]
+            # 수정된 내용을 담을 리스트 (UI 렌더링용이 아니라 실제 데이터 저장용)
+            # Streamlit은 위젯 값을 바로 세션에 반영하지 않으므로, form이나 콜백을 쓰거나
+            # 아래처럼 화면에 뿌려진 widget의 값을 나중에 읽어와야 합니다.
+            
+            with st.expander("📝 대본 수정하기 (여기를 펼쳐서 내용을 확인하세요)", expanded=True):
+                updated_scripts = []
                 
-                st.markdown(f"**장면 {i+1}: {img_name}**")
-                # 펼침면 dedup 안내 (직전 장면과 동일한 텍스트면 자동으로 무음 처리됨)
-                if item.get("_dedupe_of_prev") and not item.get("text"):
-                    st.caption("↳ 이전 장면과 동일한 텍스트, 자막·오디오 자동 생략됨 (이미지만 노출). 다른 텍스트로 바꾸려면 아래 입력창에 직접 적어주세요.")
-
-                # 추가 문장(extras) 드롭다운에서 재사용할 보이스 옵션 — 본문은 항상
-                # 캐릭터 프로필의 나레이터로 읽으므로 여기엔 selectbox가 필요 없음.
-                speakers_list = [
-                    "narrator", "child_male", "child_female",
-                    "adult_male", "adult_female",
-                    "elder_male", "elder_female",
-                    "young_male", "young_female",
-                    "animal", "none",
-                ]
-
-                col_img, col_text = st.columns([1, 4])
-
-                with col_img:
-                    img_obj = next((img for n, img in st.session_state.loaded_images if n == img_name), None)
-                    if img_obj:
-                        st.image(img_obj)
-
-                with col_text:
-                    new_text = st.text_area(
-                        label="대사 (Subtitle)",
-                        value=item["text"],
-                        key=f"script_text_{i}",
-                        height=70,
-                    )
-
-                # 🙋 추가 문장 (워크숍 인터랙션) — 본문 안에 적어둔 새 문장을 여기에 다시
-                # 적고 화자만 다르게 지정하면, TTS가 그 부분만 지정 화자로 읽고 나머지는
-                # 원래대로 처리. 자막은 본문 그대로 사용되므로 시각적 흐름은 안 끊김.
-                _existing_extras = item.get("extra_lines", []) or []
-                with st.expander(
-                    f"🙋 추가 대사 작성하기 — {len(_existing_extras)}개",
-                    expanded=bool(_existing_extras),
-                ):
-                    st.caption(
-                        "본문에 새로 적은 문장을 아래에 다시 적고 화자·톤을 골라주세요. "
-                        "🎧 미리듣기로 톤을 바꿔가며 들어볼 수 있어요."
-                    )
-
-                    for ei, ex in enumerate(_existing_extras):
-                        # 1행: 텍스트 + 화자 + 삭제
-                        ex_col_text, ex_col_spk, ex_col_del = st.columns([3, 1, 0.5])
-                        with ex_col_text:
-                            st.text_input(
-                                label=f"추가 문장 #{ei+1}",
-                                value=ex.get("text", ""),
-                                key=f"extra_text_{i}_{ei}",
-                                placeholder='예: 민준아, 어떻게 됐을까?',
-                                help="본문 textarea에 적어둔 문장과 똑같이 적어주세요. 첫 등장 위치에 매칭됩니다.",
-                            )
-                        with ex_col_spk:
-                            _ex_spk = ex.get("speaker", "narrator")
-                            _ex_spk_list = list(speakers_list)
-                            if _ex_spk not in _ex_spk_list:
-                                _ex_spk_list.append(_ex_spk)
-                            st.selectbox(
-                                label="화자",
-                                options=_ex_spk_list,
-                                index=_ex_spk_list.index(_ex_spk),
-                                key=f"extra_spk_{i}_{ei}",
-                            )
-                        with ex_col_del:
-                            st.markdown("&nbsp;", unsafe_allow_html=True)
-                            if st.button("🗑️", key=f"extra_del_{i}_{ei}", help="이 추가 문장 삭제"):
-                                _existing_extras.pop(ei)
-                                st.session_state.step1_scripts[i]["extra_lines"] = _existing_extras
-                                st.rerun()
-
-                        # 2행: 톤/말투 지시 + 미리듣기 버튼
-                        ex_col_tone, ex_col_prev = st.columns([4, 1])
-                        with ex_col_tone:
-                            st.text_input(
-                                label="톤/말투 지시 (선택)",
-                                value=ex.get("tone", ""),
-                                key=f"extra_tone_{i}_{ei}",
-                                placeholder="예: 흥분된 목소리, 속삭이듯, 매우 과장되게",
-                                help="Gemini Pro 엔진에서 이 prompt가 음성 톤에 반영됩니다.",
-                            )
-                        with ex_col_prev:
-                            st.markdown("&nbsp;", unsafe_allow_html=True)
-                            if st.button("🎧 미리듣기", key=f"extra_prev_btn_{i}_{ei}"):
-                                _pv_text = (st.session_state.get(f"extra_text_{i}_{ei}") or "").strip()
-                                _pv_spk = st.session_state.get(f"extra_spk_{i}_{ei}") or "narrator"
-                                _pv_tone = (st.session_state.get(f"extra_tone_{i}_{ei}") or "").strip()
-                                if not _pv_text:
-                                    st.warning("문장을 먼저 적어주세요.")
-                                else:
-                                    # 캐릭터 프로필에서 narrator 보이스 추출
-                                    _cd = st.session_state.get("mode_a_characters") or {}
-                                    _nar = next((c for c in _cd.get("characters", [])
-                                                 if c.get("id") == "_narrator_"), None)
-                                    _nar_label = _nar.get("voice_label") if _nar else None
-                                    _nar_voice = b_text_based.VOICE_PRESETS.get(_nar_label) if _nar_label else None
-                                    _resolved_spk = _nar_voice if (_pv_spk == "narrator" and _nar_voice) else _pv_spk
-                                    # tone → style_prompt
-                                    _style = (
-                                        f"Roleplay with a '{_pv_tone}' tone. "
-                                        f"Speak the following Korean text naturally with matching emotion."
-                                    ) if _pv_tone else ""
-                                    # 합성 + 캐시
-                                    _prev_dir = SESSION_DIR / f"preview_extras_{st.session_state.proc_uid}"
-                                    _prev_dir.mkdir(parents=True, exist_ok=True)
-                                    _prev_path = _prev_dir / f"extra_{i:02d}_{ei:02d}.mp3"
-                                    with st.spinner("미리듣기 합성 중..."):
-                                        _ok = text_to_speech(
-                                            _pv_text, str(_prev_path),
-                                            speaker=_resolved_spk,
-                                            engine=MODE_A_TTS_ENGINE,
-                                            style_prompt=_style,
-                                        )
-                                    if _ok and _prev_path.exists():
-                                        st.session_state[f"extra_audio_{i}_{ei}"] = str(_prev_path)
-                                        _try_key = f"extra_prev_try_{i}_{ei}"
-                                        st.session_state[_try_key] = st.session_state.get(_try_key, 0) + 1
-                                        log_event("modeA_extra_preview", {
-                                            "scene": i, "extra_idx": ei,
-                                            "text": _pv_text,
-                                            "speaker": _pv_spk,
-                                            "tone": _pv_tone,
-                                            "attempt": st.session_state[_try_key],
-                                            "success": True,
-                                        })
-                                    else:
-                                        st.error("미리듣기 합성 실패")
-                                        log_event("modeA_extra_preview", {
-                                            "scene": i, "extra_idx": ei,
-                                            "text": _pv_text,
-                                            "speaker": _pv_spk,
-                                            "tone": _pv_tone,
-                                            "success": False,
-                                        })
-
-                        # 미리듣기 결과 (있으면 표시)
-                        _prev_audio = st.session_state.get(f"extra_audio_{i}_{ei}")
-                        if _prev_audio and os.path.exists(_prev_audio):
-                            st.audio(_prev_audio)
-
-                        st.markdown("---")
-
-                    if st.button("+ 추가 문장 등록", key=f"extra_add_{i}"):
-                        _existing_extras.append({"text": "", "speaker": "narrator", "tone": ""})
-                        st.session_state.step1_scripts[i]["extra_lines"] = _existing_extras
-                        st.rerun()
-
-                # 🎧 이 장면 단독 TTS — 장면별로 반복 튜닝하며 즉시 들어볼 수 있게.
-                _scene_audio_info = None
-                if st.session_state.step2_audio and i < len(st.session_state.step2_audio):
-                    _scene_audio_info = st.session_state.step2_audio[i]
-
-                _has_scene_audio = bool(_scene_audio_info and _scene_audio_info.get("path")
-                                        and os.path.exists(_scene_audio_info["path"]))
-                _btn_label = (
-                    "🎧 이 장면 TTS 다시 생성"
-                    if _has_scene_audio
-                    else "🎧 이 장면 TTS 생성"
-                )
-
-                if st.button(_btn_label, key=f"scene_tts_btn_{i}"):
-                    _text = (st.session_state.get(f"script_text_{i}") or "").strip()
-                    _orig_text = (item.get("text") or "").strip()
-                    _spk = "narrator" if _text else (item.get("speaker") or "none")
-                    _scene_extras_out = []
-                    for ei in range(len(_existing_extras)):
-                        _ex_text = (st.session_state.get(f"extra_text_{i}_{ei}") or "").strip()
-                        _ex_spk = st.session_state.get(f"extra_spk_{i}_{ei}") or "narrator"
-                        _ex_tone = (st.session_state.get(f"extra_tone_{i}_{ei}") or "").strip()
-                        if _ex_text:
-                            _scene_extras_out.append({"text": _ex_text, "speaker": _ex_spk, "tone": _ex_tone})
-
-                    # 사용자 입력 스냅샷 — TTS 시도 시점에 무조건 기록 (성공/실패 무관)
-                    _char_snapshot = [
-                        {"id": c.get("id"), "name": c.get("name"),
-                         "voice_label": c.get("voice_label")}
-                        for c in (st.session_state.get("mode_a_characters") or {}).get("characters", []) or []
+                # 장면별 입력창 표시
+                for i, item in enumerate(st.session_state.step1_scripts):
+                    img_name = st.session_state.selected_pages[i]
+                    
+                    st.markdown(f"**장면 {i+1}: {img_name}**")
+                    # 펼침면 dedup 안내 (직전 장면과 동일한 텍스트면 자동으로 무음 처리됨)
+                    if item.get("_dedupe_of_prev") and not item.get("text"):
+                        st.caption("↳ 이전 장면과 동일한 텍스트, 자막·오디오 자동 생략됨 (이미지만 노출). 다른 텍스트로 바꾸려면 아래 입력창에 직접 적어주세요.")
+    
+                    # 추가 문장(extras) 드롭다운에서 재사용할 보이스 옵션 — 본문은 항상
+                    # 캐릭터 프로필의 나레이터로 읽으므로 여기엔 selectbox가 필요 없음.
+                    speakers_list = [
+                        "narrator", "child_male", "child_female",
+                        "adult_male", "adult_female",
+                        "elder_male", "elder_female",
+                        "young_male", "young_female",
+                        "animal", "none",
                     ]
-                    _tts_try_key = f"scene_tts_try_{i}"
-                    st.session_state[_tts_try_key] = st.session_state.get(_tts_try_key, 0) + 1
-                    log_event("modeA_scene_tts_start", {
-                        "scene": i,
-                        "text_edited": _text,
-                        "text_original": _orig_text,
-                        "text_changed": _text != _orig_text,
-                        "runway_prompt": st.session_state.get(f"script_rw_prompt_{i}", "").strip(),
-                        "extras": _scene_extras_out,
-                        "character_voices": _char_snapshot,
-                        "attempt": st.session_state[_tts_try_key],
-                    })
-
-                    _scene_dict = {
-                        "text": _text,
-                        "speaker": _spk,
-                        "runway_prompt": st.session_state.get(f"script_rw_prompt_{i}", "").strip(),
-                        "_dedupe_of_prev": item.get("_dedupe_of_prev", False),
-                        "extra_lines": _scene_extras_out,
-                    }
-                    # step1_scripts에도 즉시 반영 → Step 3가 최신 데이터 사용
-                    st.session_state.step1_scripts[i] = _scene_dict
-
-                    # step2_audio 길이 보정/초기화
-                    if (st.session_state.step2_audio is None
-                            or len(st.session_state.step2_audio) != len(st.session_state.step1_scripts)):
-                        st.session_state.step2_audio = [
-                            {"path": None, "duration": None}
-                            for _ in range(len(st.session_state.step1_scripts))
+    
+                    col_img, col_text = st.columns([1, 4])
+    
+                    with col_img:
+                        img_obj = next((img for n, img in st.session_state.loaded_images if n == img_name), None)
+                        if img_obj:
+                            st.image(img_obj)
+    
+                    with col_text:
+                        new_text = st.text_area(
+                            label="대사 (Subtitle)",
+                            value=item["text"],
+                            key=f"script_text_{i}",
+                            height=70,
+                        )
+    
+                    # 🙋 추가 문장 (워크숍 인터랙션) — 본문 안에 적어둔 새 문장을 여기에 다시
+                    # 적고 화자만 다르게 지정하면, TTS가 그 부분만 지정 화자로 읽고 나머지는
+                    # 원래대로 처리. 자막은 본문 그대로 사용되므로 시각적 흐름은 안 끊김.
+                    _existing_extras = item.get("extra_lines", []) or []
+                    with st.expander(
+                        f"🙋 추가 대사 작성하기 — {len(_existing_extras)}개",
+                        expanded=bool(_existing_extras),
+                    ):
+                        st.caption(
+                            "본문에 새로 적은 문장을 아래에 다시 적고 화자·톤을 골라주세요. "
+                            "🎧 미리듣기로 톤을 바꿔가며 들어볼 수 있어요."
+                        )
+    
+                        for ei, ex in enumerate(_existing_extras):
+                            # 1행: 텍스트 + 화자 + 삭제
+                            ex_col_text, ex_col_spk, ex_col_del = st.columns([3, 1, 0.5])
+                            with ex_col_text:
+                                st.text_input(
+                                    label=f"추가 문장 #{ei+1}",
+                                    value=ex.get("text", ""),
+                                    key=f"extra_text_{i}_{ei}",
+                                    placeholder='예: 민준아, 어떻게 됐을까?',
+                                    help="본문 textarea에 적어둔 문장과 똑같이 적어주세요. 첫 등장 위치에 매칭됩니다.",
+                                )
+                            with ex_col_spk:
+                                _ex_spk = ex.get("speaker", "narrator")
+                                _ex_spk_list = list(speakers_list)
+                                if _ex_spk not in _ex_spk_list:
+                                    _ex_spk_list.append(_ex_spk)
+                                st.selectbox(
+                                    label="화자",
+                                    options=_ex_spk_list,
+                                    index=_ex_spk_list.index(_ex_spk),
+                                    key=f"extra_spk_{i}_{ei}",
+                                )
+                            with ex_col_del:
+                                st.markdown("&nbsp;", unsafe_allow_html=True)
+                                if st.button("🗑️", key=f"extra_del_{i}_{ei}", help="이 추가 문장 삭제"):
+                                    _existing_extras.pop(ei)
+                                    st.session_state.step1_scripts[i]["extra_lines"] = _existing_extras
+                                    st.rerun()
+    
+                            # 2행: 톤/말투 지시 + 미리듣기 버튼
+                            ex_col_tone, ex_col_prev = st.columns([4, 1])
+                            with ex_col_tone:
+                                st.text_input(
+                                    label="톤/말투 지시 (선택)",
+                                    value=ex.get("tone", ""),
+                                    key=f"extra_tone_{i}_{ei}",
+                                    placeholder="예: 흥분된 목소리, 속삭이듯, 매우 과장되게",
+                                    help="Gemini Pro 엔진에서 이 prompt가 음성 톤에 반영됩니다.",
+                                )
+                            with ex_col_prev:
+                                st.markdown("&nbsp;", unsafe_allow_html=True)
+                                if st.button("🎧 미리듣기", key=f"extra_prev_btn_{i}_{ei}"):
+                                    _pv_text = (st.session_state.get(f"extra_text_{i}_{ei}") or "").strip()
+                                    _pv_spk = st.session_state.get(f"extra_spk_{i}_{ei}") or "narrator"
+                                    _pv_tone = (st.session_state.get(f"extra_tone_{i}_{ei}") or "").strip()
+                                    if not _pv_text:
+                                        st.warning("문장을 먼저 적어주세요.")
+                                    else:
+                                        # 캐릭터 프로필에서 narrator 보이스 추출
+                                        _cd = st.session_state.get("mode_a_characters") or {}
+                                        _nar = next((c for c in _cd.get("characters", [])
+                                                     if c.get("id") == "_narrator_"), None)
+                                        _nar_label = _nar.get("voice_label") if _nar else None
+                                        _nar_voice = b_text_based.VOICE_PRESETS.get(_nar_label) if _nar_label else None
+                                        _resolved_spk = _nar_voice if (_pv_spk == "narrator" and _nar_voice) else _pv_spk
+                                        # tone → style_prompt
+                                        _style = (
+                                            f"Roleplay with a '{_pv_tone}' tone. "
+                                            f"Speak the following Korean text naturally with matching emotion."
+                                        ) if _pv_tone else ""
+                                        # 합성 + 캐시
+                                        _prev_dir = SESSION_DIR / f"preview_extras_{st.session_state.proc_uid}"
+                                        _prev_dir.mkdir(parents=True, exist_ok=True)
+                                        _prev_path = _prev_dir / f"extra_{i:02d}_{ei:02d}.mp3"
+                                        with st.spinner("미리듣기 합성 중..."):
+                                            _ok = text_to_speech(
+                                                _pv_text, str(_prev_path),
+                                                speaker=_resolved_spk,
+                                                engine=MODE_A_TTS_ENGINE,
+                                                style_prompt=_style,
+                                            )
+                                        if _ok and _prev_path.exists():
+                                            st.session_state[f"extra_audio_{i}_{ei}"] = str(_prev_path)
+                                            _try_key = f"extra_prev_try_{i}_{ei}"
+                                            st.session_state[_try_key] = st.session_state.get(_try_key, 0) + 1
+                                            log_event("modeA_extra_preview", {
+                                                "scene": i, "extra_idx": ei,
+                                                "text": _pv_text,
+                                                "speaker": _pv_spk,
+                                                "tone": _pv_tone,
+                                                "attempt": st.session_state[_try_key],
+                                                "success": True,
+                                            })
+                                        else:
+                                            st.error("미리듣기 합성 실패")
+                                            log_event("modeA_extra_preview", {
+                                                "scene": i, "extra_idx": ei,
+                                                "text": _pv_text,
+                                                "speaker": _pv_spk,
+                                                "tone": _pv_tone,
+                                                "success": False,
+                                            })
+    
+                            # 미리듣기 결과 (있으면 표시)
+                            _prev_audio = st.session_state.get(f"extra_audio_{i}_{ei}")
+                            if _prev_audio and os.path.exists(_prev_audio):
+                                st.audio(_prev_audio)
+    
+                            st.markdown("---")
+    
+                        if st.button("+ 추가 문장 등록", key=f"extra_add_{i}"):
+                            _existing_extras.append({"text": "", "speaker": "narrator", "tone": ""})
+                            st.session_state.step1_scripts[i]["extra_lines"] = _existing_extras
+                            st.rerun()
+    
+                    # 🎧 이 장면 단독 TTS — 장면별로 반복 튜닝하며 즉시 들어볼 수 있게.
+                    _scene_audio_info = None
+                    if st.session_state.step2_audio and i < len(st.session_state.step2_audio):
+                        _scene_audio_info = st.session_state.step2_audio[i]
+    
+                    _has_scene_audio = bool(_scene_audio_info and _scene_audio_info.get("path")
+                                            and os.path.exists(_scene_audio_info["path"]))
+                    _btn_label = (
+                        "🎧 이 장면 TTS 다시 생성"
+                        if _has_scene_audio
+                        else "🎧 이 장면 TTS 생성"
+                    )
+    
+                    if st.button(_btn_label, key=f"scene_tts_btn_{i}"):
+                        _text = (st.session_state.get(f"script_text_{i}") or "").strip()
+                        _orig_text = (item.get("text") or "").strip()
+                        _spk = "narrator" if _text else (item.get("speaker") or "none")
+                        _scene_extras_out = []
+                        for ei in range(len(_existing_extras)):
+                            _ex_text = (st.session_state.get(f"extra_text_{i}_{ei}") or "").strip()
+                            _ex_spk = st.session_state.get(f"extra_spk_{i}_{ei}") or "narrator"
+                            _ex_tone = (st.session_state.get(f"extra_tone_{i}_{ei}") or "").strip()
+                            if _ex_text:
+                                _scene_extras_out.append({"text": _ex_text, "speaker": _ex_spk, "tone": _ex_tone})
+    
+                        # 사용자 입력 스냅샷 — TTS 시도 시점에 무조건 기록 (성공/실패 무관)
+                        _char_snapshot = [
+                            {"id": c.get("id"), "name": c.get("name"),
+                             "voice_label": c.get("voice_label")}
+                            for c in (st.session_state.get("mode_a_characters") or {}).get("characters", []) or []
                         ]
-
-                    if not _text:
-                        # 빈 텍스트(dedup·무음 장면)는 TTS 스킵
-                        st.session_state.step2_audio[i] = {"path": None, "duration": None}
-                        st.rerun()
-                    else:
-                        _cd = st.session_state.get("mode_a_characters") or {}
-                        _chars = _cd.get("characters") or []
-                        _dialogues = _cd.get("dialogue_map") or []
-
-                        SESSION_DIR.mkdir(parents=True, exist_ok=True)
+                        _tts_try_key = f"scene_tts_try_{i}"
+                        st.session_state[_tts_try_key] = st.session_state.get(_tts_try_key, 0) + 1
+                        log_event("modeA_scene_tts_start", {
+                            "scene": i,
+                            "text_edited": _text,
+                            "text_original": _orig_text,
+                            "text_changed": _text != _orig_text,
+                            "runway_prompt": st.session_state.get(f"script_rw_prompt_{i}", "").strip(),
+                            "extras": _scene_extras_out,
+                            "character_voices": _char_snapshot,
+                            "attempt": st.session_state[_tts_try_key],
+                        })
+    
+                        _scene_dict = {
+                            "text": _text,
+                            "speaker": _spk,
+                            "runway_prompt": st.session_state.get(f"script_rw_prompt_{i}", "").strip(),
+                            "_dedupe_of_prev": item.get("_dedupe_of_prev", False),
+                            "extra_lines": _scene_extras_out,
+                        }
+                        # step1_scripts에도 즉시 반영 → Step 3가 최신 데이터 사용
+                        st.session_state.step1_scripts[i] = _scene_dict
+    
+                        # step2_audio 길이 보정/초기화
+                        if (st.session_state.step2_audio is None
+                                or len(st.session_state.step2_audio) != len(st.session_state.step1_scripts)):
+                            st.session_state.step2_audio = [
+                                {"path": None, "duration": None}
+                                for _ in range(len(st.session_state.step1_scripts))
+                            ]
+    
+                        if not _text:
+                            # 빈 텍스트(dedup·무음 장면)는 TTS 스킵
+                            st.session_state.step2_audio[i] = {"path": None, "duration": None}
+                            st.rerun()
+                        else:
+                            _cd = st.session_state.get("mode_a_characters") or {}
+                            _chars = _cd.get("characters") or []
+                            _dialogues = _cd.get("dialogue_map") or []
+    
+                            SESSION_DIR.mkdir(parents=True, exist_ok=True)
+                            _uid = st.session_state.proc_uid or uuid.uuid4().hex[:8]
+                            if not st.session_state.proc_uid:
+                                st.session_state.proc_uid = _uid
+    
+                            with st.spinner(f"장면 {i+1} 음성 합성 중..."):
+                                _audio_paths = _generate_mode_a_audio_with_characters(
+                                    [_scene_dict], _chars, _dialogues, SESSION_DIR,
+                                    f"{_uid}_scene{i:02d}",
+                                )
+                            if _audio_paths and _audio_paths[0]:
+                                _dur = get_audio_duration(_audio_paths[0])
+                                st.session_state.step2_audio[i] = {
+                                    "path": _audio_paths[0], "duration": _dur,
+                                }
+                                log_event("modeA_scene_tts_done", {
+                                    "scene": i, "duration": _dur,
+                                    "extra_count": len(_scene_extras_out),
+                                })
+                                st.rerun()
+                            else:
+                                st.error(f"장면 {i+1} TTS 생성 실패")
+    
+                    if _has_scene_audio:
+                        _dur = _scene_audio_info.get("duration") or 0
+                        st.caption(f"⏱ {_dur:.1f}초")
+                        st.audio(_scene_audio_info["path"])
+    
+                    # 🎬 캐릭터 움직임 설정 — TTS 아래로 이동. 그 장면 전용 Runway 프롬프트.
+                    with st.expander("🎬 캐릭터 움직임 설정", expanded=False):
+                        st.text_input(
+                            label="이 장면에만 적용할 프롬프트",
+                            value=item.get("runway_prompt", ""),
+                            placeholder="비우면 ② 글로벌 프롬프트 사용. 예: child runs through dark forest, scared",
+                            key=f"script_rw_prompt_{i}",
+                            help="입력하면 이 장면만 이 프롬프트로 Runway 영상을 생성합니다.",
+                        )
+    
+                    # 🎬 이 장면 영상 — Runway 단발 호출로 결과 확인 후 마음에 안 들면 재생성.
+                    _scene_vid_info = None
+                    if (st.session_state.modeA_scene_videos
+                            and i < len(st.session_state.modeA_scene_videos)):
+                        _scene_vid_info = st.session_state.modeA_scene_videos[i]
+                    _has_scene_vid = bool(
+                        _scene_vid_info and _scene_vid_info.get("raw_path")
+                        and os.path.exists(_scene_vid_info["raw_path"])
+                    )
+                    _rw_btn_label = (
+                        "🎬 이 장면 영상 다시 생성 (Runway)"
+                        if _has_scene_vid
+                        else "🎬 이 장면 영상 생성 (Runway)"
+                    )
+                    st.caption("⚠️ Runway 크레딧이 차감됩니다.")
+                    if st.button(_rw_btn_label, key=f"scene_runway_btn_{i}"):
+                        _scene_rw_prompt = (st.session_state.get(f"script_rw_prompt_{i}") or "").strip()
+                        _final_prompt = _scene_rw_prompt or PROMPT
+    
+                        # 시행 카운터로 같은 장면의 재시도 횟수 추적
+                        _rw_try_key = f"scene_runway_try_{i}"
+                        st.session_state[_rw_try_key] = st.session_state.get(_rw_try_key, 0) + 1
+                        log_event("modeA_scene_runway_start", {
+                            "scene": i,
+                            "user_prompt": _scene_rw_prompt,
+                            "fallback_to_global": not _scene_rw_prompt,
+                            "final_prompt": _final_prompt,
+                            "attempt": st.session_state[_rw_try_key],
+                        })
+    
+                        # 길이는 TTS 결과 기준 (없으면 DEFAULT_DURATION)
+                        _audio_info_for_dur = (
+                            st.session_state.step2_audio[i]
+                            if (st.session_state.step2_audio and i < len(st.session_state.step2_audio))
+                            else None
+                        )
+                        _tts_dur = _audio_info_for_dur.get("duration") if _audio_info_for_dur else None
+                        if _tts_dur is None:
+                            _rw_dur = DEFAULT_DURATION
+                        elif _tts_dur <= 5.0:
+                            _rw_dur = 5
+                        else:
+                            _rw_dur = 10
+    
+                        _img_path = folder / img_name
                         _uid = st.session_state.proc_uid or uuid.uuid4().hex[:8]
                         if not st.session_state.proc_uid:
                             st.session_state.proc_uid = _uid
-
-                        with st.spinner(f"장면 {i+1} 음성 합성 중..."):
-                            _audio_paths = _generate_mode_a_audio_with_characters(
-                                [_scene_dict], _chars, _dialogues, SESSION_DIR,
-                                f"{_uid}_scene{i:02d}",
-                            )
-                        if _audio_paths and _audio_paths[0]:
-                            _dur = get_audio_duration(_audio_paths[0])
-                            st.session_state.step2_audio[i] = {
-                                "path": _audio_paths[0], "duration": _dur,
+    
+                        try:
+                            with st.spinner(f"장면 {i+1} 영상 생성 중 (1~3분)..."):
+                                _result = generate_video_from_image(str(_img_path), _final_prompt, _rw_dur)
+                                _video_url = extract_video_url(_result)
+                                SESSION_DIR.mkdir(parents=True, exist_ok=True)
+                                _raw_path = SESSION_DIR / f"clip_{i:02d}_{_uid}_raw.mp4"
+                                download_video(_video_url, _raw_path)
+    
+                            # 세션 캐시 업데이트 (길이 보정)
+                            if (st.session_state.modeA_scene_videos is None
+                                    or len(st.session_state.modeA_scene_videos) != len(st.session_state.step1_scripts)):
+                                st.session_state.modeA_scene_videos = [None] * len(st.session_state.step1_scripts)
+                            st.session_state.modeA_scene_videos[i] = {
+                                "raw_path": str(_raw_path),
+                                "prompt_used": _final_prompt,
+                                "runway_dur": _rw_dur,
                             }
-                            log_event("modeA_scene_tts_done", {
-                                "scene": i, "duration": _dur,
-                                "extra_count": len(_scene_extras_out),
+                            # 그 장면의 runway_prompt도 step1_scripts에 반영
+                            st.session_state.step1_scripts[i]["runway_prompt"] = _scene_rw_prompt
+                            log_event("modeA_scene_runway_done", {
+                                "scene": i, "prompt": _final_prompt, "runway_dur": _rw_dur,
                             })
                             st.rerun()
-                        else:
-                            st.error(f"장면 {i+1} TTS 생성 실패")
+                        except Exception as e:
+                            st.error(f"영상 생성 실패: {e}")
+    
+                    if _has_scene_vid:
+                        st.caption(f"🎬 프롬프트: {_scene_vid_info.get('prompt_used', '')[:80]}")
+                        st.video(_scene_vid_info["raw_path"])
 
-                if _has_scene_audio:
-                    _dur = _scene_audio_info.get("duration") or 0
-                    st.caption(f"⏱ {_dur:.1f}초")
-                    st.audio(_scene_audio_info["path"])
+                    st.divider()
 
-                # 🎬 캐릭터 움직임 설정 — TTS 아래로 이동. 그 장면 전용 Runway 프롬프트.
-                with st.expander("🎬 캐릭터 움직임 설정", expanded=False):
-                    st.text_input(
-                        label="이 장면에만 적용할 프롬프트",
-                        value=item.get("runway_prompt", ""),
-                        placeholder="비우면 ② 글로벌 프롬프트 사용. 예: child runs through dark forest, scared",
-                        key=f"script_rw_prompt_{i}",
-                        help="입력하면 이 장면만 이 프롬프트로 Runway 영상을 생성합니다.",
-                    )
-
-                # 🎬 이 장면 영상 — Runway 단발 호출로 결과 확인 후 마음에 안 들면 재생성.
-                _scene_vid_info = None
-                if (st.session_state.modeA_scene_videos
-                        and i < len(st.session_state.modeA_scene_videos)):
-                    _scene_vid_info = st.session_state.modeA_scene_videos[i]
-                _has_scene_vid = bool(
-                    _scene_vid_info and _scene_vid_info.get("raw_path")
-                    and os.path.exists(_scene_vid_info["raw_path"])
-                )
-                _rw_btn_label = (
-                    "🎬 이 장면 영상 다시 생성 (Runway)"
-                    if _has_scene_vid
-                    else "🎬 이 장면 영상 생성 (Runway)"
-                )
-                st.caption("⚠️ Runway 크레딧이 차감됩니다.")
-                if st.button(_rw_btn_label, key=f"scene_runway_btn_{i}"):
-                    _scene_rw_prompt = (st.session_state.get(f"script_rw_prompt_{i}") or "").strip()
-                    _final_prompt = _scene_rw_prompt or PROMPT
-
-                    # 시행 카운터로 같은 장면의 재시도 횟수 추적
-                    _rw_try_key = f"scene_runway_try_{i}"
-                    st.session_state[_rw_try_key] = st.session_state.get(_rw_try_key, 0) + 1
-                    log_event("modeA_scene_runway_start", {
-                        "scene": i,
-                        "user_prompt": _scene_rw_prompt,
-                        "fallback_to_global": not _scene_rw_prompt,
-                        "final_prompt": _final_prompt,
-                        "attempt": st.session_state[_rw_try_key],
-                    })
-
-                    # 길이는 TTS 결과 기준 (없으면 DEFAULT_DURATION)
-                    _audio_info_for_dur = (
-                        st.session_state.step2_audio[i]
-                        if (st.session_state.step2_audio and i < len(st.session_state.step2_audio))
-                        else None
-                    )
-                    _tts_dur = _audio_info_for_dur.get("duration") if _audio_info_for_dur else None
-                    if _tts_dur is None:
-                        _rw_dur = DEFAULT_DURATION
-                    elif _tts_dur <= 5.0:
-                        _rw_dur = 5
-                    else:
-                        _rw_dur = 10
-
-                    _img_path = folder / img_name
-                    _uid = st.session_state.proc_uid or uuid.uuid4().hex[:8]
-                    if not st.session_state.proc_uid:
-                        st.session_state.proc_uid = _uid
-
-                    try:
-                        with st.spinner(f"장면 {i+1} 영상 생성 중 (1~3분)..."):
-                            _result = generate_video_from_image(str(_img_path), _final_prompt, _rw_dur)
-                            _video_url = extract_video_url(_result)
-                            SESSION_DIR.mkdir(parents=True, exist_ok=True)
-                            _raw_path = SESSION_DIR / f"clip_{i:02d}_{_uid}_raw.mp4"
-                            download_video(_video_url, _raw_path)
-
-                        # 세션 캐시 업데이트 (길이 보정)
-                        if (st.session_state.modeA_scene_videos is None
-                                or len(st.session_state.modeA_scene_videos) != len(st.session_state.step1_scripts)):
-                            st.session_state.modeA_scene_videos = [None] * len(st.session_state.step1_scripts)
-                        st.session_state.modeA_scene_videos[i] = {
-                            "raw_path": str(_raw_path),
-                            "prompt_used": _final_prompt,
-                            "runway_dur": _rw_dur,
-                        }
-                        # 그 장면의 runway_prompt도 step1_scripts에 반영
-                        st.session_state.step1_scripts[i]["runway_prompt"] = _scene_rw_prompt
-                        log_event("modeA_scene_runway_done", {
-                            "scene": i, "prompt": _final_prompt, "runway_dur": _rw_dur,
-                        })
-                        st.rerun()
-                    except Exception as e:
-                        st.error(f"영상 생성 실패: {e}")
-
-                if _has_scene_vid:
-                    st.caption(f"🎬 프롬프트: {_scene_vid_info.get('prompt_used', '')[:80]}")
-                    st.video(_scene_vid_info["raw_path"])
-
-                st.divider()
+        # Step 3 navigation — TTS 음성이 하나라도 있으면 다음 단계로
+        _has_any_audio = bool(st.session_state.step2_audio) and any(
+            (a and a.get("path")) for a in (st.session_state.step2_audio or [])
+        )
+        if not _has_any_audio:
+            st.info("최소 한 장면 이상 🎧 TTS 음성을 생성해야 다음 단계로 이동할 수 있어요.")
+        _render_modeA_nav(prev_ok=True, next_ok=_has_any_audio)
+        st.stop()
 
     # ---------------------------------------------------------
     # [STEP 2] 오디오 검토 (장면별 TTS가 하나라도 생성된 경우)
