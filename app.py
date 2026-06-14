@@ -172,7 +172,13 @@ if not book_folders:
     st.stop()
 
 log_stage_entry("book_select")
-selected_book = st.selectbox("책 선택:", book_folders)
+# Mode A wizard 진입 후(step >= 2)는 책/모드 선택 UI를 숨겨 화면을 정리.
+# 대신 작은 정보 바로 현재 책/모드를 표시. 1단계로 돌아오면 다시 보임.
+_compact_top = st.session_state.get("modeA_wizard_step", 1) > 1
+if _compact_top:
+    selected_book = st.session_state.get("current_book") or book_folders[0]
+else:
+    selected_book = st.selectbox("책 선택:", book_folders)
 
 # 책이 변경되면 이미지 목록 초기화 + 로깅
 if st.session_state.current_book != selected_book:
@@ -219,15 +225,19 @@ st.success(f" {len(images)}개의 삽화 로드 완료")
 #-----------------
 # 0. 작업 방식 선택
 #------------------
-st.divider()
-st.subheader("0.작업 방식 선택")
-
 log_stage_entry("mode_select")
-mode = st.radio(
-    "어떤 방식으로 영상을 만드시겠습니까?",
-    ["이미지 선택 기반 제작", "텍스트 분석 기반 예고편 제작"],
-    captions=["내가 고른 삽화에 맞춰 대본을 씁니다.", "전체 내용을 요약해 예고편을 짜고, 어울리는 그림을 AI가 추천합니다."]
-)
+if _compact_top:
+    # Wizard 진입 후: 책 + 모드를 작은 정보 바로 압축 표시.
+    mode = st.session_state.get("current_mode") or "이미지 선택 기반 제작"
+    st.info(f"📖 **{selected_book}**  ·  🎬 {mode}", icon="📍")
+else:
+    st.divider()
+    st.subheader("0.작업 방식 선택")
+    mode = st.radio(
+        "어떤 방식으로 영상을 만드시겠습니까?",
+        ["이미지 선택 기반 제작", "텍스트 분석 기반 예고편 제작"],
+        captions=["내가 고른 삽화에 맞춰 대본을 씁니다.", "전체 내용을 요약해 예고편을 짜고, 어울리는 그림을 AI가 추천합니다."]
+    )
 
 # 모드 변경 시 세션 상태 초기화 (필요시)
 if "current_mode" not in st.session_state:
