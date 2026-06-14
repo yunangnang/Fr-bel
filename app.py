@@ -1345,7 +1345,6 @@ if mode == "이미지 선택 기반 제작":
                         if _has_scene_vid
                         else "🎬 이 장면 영상 생성 (Runway)"
                     )
-                    st.caption("⚠️ Runway 크레딧이 차감됩니다.")
                     if st.button(_rw_btn_label, key=f"scene_runway_btn_{i}"):
                         _scene_rw_prompt = (st.session_state.get(f"script_rw_prompt_{i}") or "").strip()
                         _final_prompt = _scene_rw_prompt or PROMPT
