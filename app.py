@@ -769,39 +769,10 @@ if mode == "이미지 선택 기반 제작":
                         st.success(f"✅ {len(result.get('characters', [])) - 1}명의 캐릭터를 찾았습니다.")
                         st.rerun()
                     except Exception as e:
-                        st.error(f"분석 실패: {e}. 아래의 🎭 캐릭터 분석 실행 버튼으로 다시 시도해 주세요.")
-            else:
-                st.error("책 txt 파일을 읽을 수 없습니다.")
-    
-        # --------------------------------
-        # 🎭 캐릭터 분석 (자동 실행, 재분석 버튼은 fallback)
-        # --------------------------------
-        btn_label = "🔄 캐릭터 다시 분석" if _has_chars else "🎭 캐릭터 분석 실행"
-    
-        if st.button(btn_label, key="mode_a_char_analysis_btn", type="secondary"):
-            full_text = txt_file.read_text(encoding="utf-8") if txt_file.exists() else ""
-            if not full_text:
-                st.error("책 txt 파일을 읽을 수 없습니다.")
-            else:
-                with st.spinner("등장인물 분석 중... (5~15초)"):
-                    try:
-                        _existing_narrator = next(
-                            (c for c in st.session_state.mode_a_characters.get("characters", [])
-                             if c.get("id") == NARRATOR_ID),
-                            None,
-                        )
-                        result = b_text_based.analyze_characters_and_speakers(client, full_text)
-                        result = _merge_analysis_with_narrator(result, _existing_narrator)
-                        st.session_state.mode_a_characters = result
-                        log_event("modeA_char_analysis_done", {
-                            "characters": result.get("characters", []),
-                            "dialogue_count": len(result.get("dialogue_map", [])),
-                        })
-                        st.success(f"✅ {len(result.get('characters', [])) - 1}명의 캐릭터를 찾았습니다.")
-                        st.rerun()
-                    except Exception as e:
                         st.error(f"분석 실패: {e}")
-    
+            else:
+                st.error("책 txt 파일을 읽을 수 없습니다.")
+
         # 캐릭터 프로필 — narrator는 항상 있으므로 무조건 표시
         if True:
             chars_data = st.session_state.mode_a_characters.get("characters", [])
