@@ -612,7 +612,7 @@ if mode == "이미지 선택 기반 제작":
 
     # 분위기 프롬프트 / 기본값 (사용자가 step 2에서 수정)
     if "modeA_prompt" not in st.session_state:
-        st.session_state.modeA_prompt = "gentle cinematic movement, children's book illustration"
+        st.session_state.modeA_prompt = ""
     PROMPT = st.session_state.modeA_prompt
     DEFAULT_DURATION = 5
     use_bgm = False
