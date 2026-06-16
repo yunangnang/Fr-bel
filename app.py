@@ -1118,7 +1118,7 @@ if mode == "이미지 선택 기반 제작":
                     _existing_extras = item.get("extra_lines", []) or []
                     with st.expander(
                         f"🙋 추가 대사 작성하기 — {len(_existing_extras)}개",
-                        expanded=bool(_existing_extras),
+                        expanded=True,
                     ):
                         st.caption(
                             "본문에 새로 적은 문장을 아래에 다시 적고 화자·톤을 골라주세요. "
@@ -1330,7 +1330,7 @@ if mode == "이미지 선택 기반 제작":
                         st.audio(_scene_audio_info["path"])
     
                     # 🎬 캐릭터 움직임 설정 — TTS 아래로 이동. 그 장면 전용 Runway 프롬프트.
-                    with st.expander("🎬 캐릭터 움직임 설정", expanded=False):
+                    with st.expander("🎬 캐릭터 움직임 설정", expanded=True):
                         st.text_input(
                             label="이 장면에만 적용할 프롬프트",
                             value=item.get("runway_prompt", ""),
