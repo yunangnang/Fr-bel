@@ -266,24 +266,30 @@ if mode == "이미지 선택 기반 제작":
     # 1: 이미지 선택 / 2: 캐릭터 보이스 / 3: 장면 편집 / 4: BGM + 최종
     # =========================================================
     MODEA_STEPS = [
-        ("이미지 선택", "🖼️"),
-        ("캐릭터 보이스", "🎙️"),
-        ("장면 편집", "✏️"),
-        ("최종 합성", "🎬"),
+        "이미지 선택",
+        "캐릭터 보이스",
+        "장면 편집",
+        "최종 합성",
     ]
     if "modeA_wizard_step" not in st.session_state:
         st.session_state.modeA_wizard_step = 1
     modeA_step = st.session_state.modeA_wizard_step
 
     def _render_modeA_step_indicator(current: int):
-        """상단에 단계 진행도(● ● ○ ○) 표시."""
+        """상단에 단계 진행도(✅ 완료 / 🟢 진행 중 / ⚪️ 대기) 표시.
+        현재 단계 라벨은 밑줄 처리."""
         cols = st.columns(len(MODEA_STEPS))
-        for i, (label, icon) in enumerate(MODEA_STEPS, start=1):
+        for i, label in enumerate(MODEA_STEPS, start=1):
             with cols[i - 1]:
                 marker = "✅" if i < current else ("🟢" if i == current else "⚪️")
-                weight = "**" if i == current else ""
-                st.markdown(f"<div style='text-align:center'>{marker}<br>{weight}{icon} {label}{weight}</div>",
-                            unsafe_allow_html=True)
+                if i == current:
+                    label_html = f"<u>{label}</u>"
+                else:
+                    label_html = label
+                st.markdown(
+                    f"<div style='text-align:center'>{marker}<br>{label_html}</div>",
+                    unsafe_allow_html=True,
+                )
 
     def _render_modeA_nav(prev_ok: bool, next_ok: bool, next_label: str = "다음 →"):
         """하단에 [← 이전] [다음 →] 버튼. next_ok=False면 다음 버튼 비활성."""
