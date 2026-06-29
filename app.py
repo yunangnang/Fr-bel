@@ -320,7 +320,6 @@ if mode == "이미지 선택 기반 제작":
     _render_modeA_step_indicator(modeA_step)
     st.divider()
 
-    st.success("예고편 생성에 사용할 장면을 골라주세요. 개수제한은 없습니다.")
     # --------------------------------
     # TXT 매칭 함수 (삽화 선택과 대본 생성 양쪽에서 사용)
     # --------------------------------
@@ -633,6 +632,7 @@ if mode == "이미지 선택 기반 제작":
     # --------------------------------
     if modeA_step == 1:
         st.subheader("① 사용할 삽화 선택")
+        st.success("예고편 생성에 사용할 장면을 골라주세요. 개수제한은 없습니다.")
         st.caption("각 페이지의 그림과 텍스트를 함께 보고 영상에 쓸 장면을 고르세요.")
 
         with st.form("select_form"):
@@ -1074,23 +1074,17 @@ if mode == "이미지 선택 기반 제작":
             _modeA_generate_step1_scripts()
             st.rerun()
 
-        # 다시 만들기 옵션 — 사용자가 수정한 걸 버리고 원문으로 되돌리고 싶을 때
-        if st.button("🔄 자막 다시 불러오기", key="modeA_step1_regen"):
-            log_button_click("mode_a_step1_regen", {"book": selected_book})
-            _modeA_generate_step1_scripts()
-            st.rerun()
-    
         # ---------------------------------------------------------
         # [STEP 1.5] 대본 검토 및 수정 UI (1단계 완료 시 표시)
         # ---------------------------------------------------------
         if st.session_state.step1_scripts is not None:
             st.success("✅ 대본 초안이 생성되었습니다. 내용을 수정하고 2단계로 넘어가세요.")
-            
+
             # 수정된 내용을 담을 리스트 (UI 렌더링용이 아니라 실제 데이터 저장용)
             # Streamlit은 위젯 값을 바로 세션에 반영하지 않으므로, form이나 콜백을 쓰거나
             # 아래처럼 화면에 뿌려진 widget의 값을 나중에 읽어와야 합니다.
-            
-            with st.expander("📝 대본 수정하기 (여기를 펼쳐서 내용을 확인하세요)", expanded=True):
+
+            with st.expander("선택하신 삽화 페이지와 동화 내용입니다.", expanded=True):
                 updated_scripts = []
                 
                 # 장면별 입력창 표시
