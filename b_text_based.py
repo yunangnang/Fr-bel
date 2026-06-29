@@ -406,7 +406,7 @@ VOICE_SAMPLE_TEXTS = {
 # (ndain→ballad, nhajun→ash, nara→coral, neunwoo→verse, njoonyoung→cedar,
 #  nwontak→onyx, nyejin→sage, nsunhee→shimmer, njiyun→marin — tts_module.GPT_VOICE_MAP 참고)
 VOICE_PRESETS = {
-    "클릭해서 캐릭터 목소리 선택 후 들어보기": None,
+    "캐릭터 목소리를 들어보고싶다면 이곳을 클릭하고 듣기버튼을 눌러주세요": None,
     "👶 아동 여성": "ndain",
     "👦 아동 남성": "nhajun",
     "👧 청년 여성": "nara",
@@ -1964,7 +1964,7 @@ def run_text_analysis_mode(client, folder, txt_file):
                         
                         # UI 표시용 라벨로 변환 (예: 👨 성인 남성 (원탁...))
                         # 매핑되지 않는 타입이 오면 기본값 설정
-                        ui_label = GPT_VOICE_TO_UI_LABEL.get(gpt_type, "클릭해서 캐릭터 목소리 선택 후 들어보기")
+                        ui_label = GPT_VOICE_TO_UI_LABEL.get(gpt_type, "캐릭터 목소리를 들어보고싶다면 이곳을 클릭하고 듣기버튼을 눌러주세요")
                         
                         # 데이터에 저장
                         char["voice_label"] = ui_label

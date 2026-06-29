@@ -180,11 +180,17 @@ def _pretty_book_name(folder: str) -> str:
     return folder
 
 log_stage_entry("book_select")
-selected_book = st.selectbox(
-    "책 선택:",
-    book_folders,
-    format_func=_pretty_book_name,
-)
+# Wizard step 2+에서는 책 선택 selectbox와 '삽화 로드 완료' 메시지를 숨김.
+# selected_book은 session_state의 current_book에서 그대로 유지.
+_hide_top_chrome = st.session_state.get("modeA_wizard_step", 1) > 1
+if _hide_top_chrome:
+    selected_book = st.session_state.get("current_book") or book_folders[0]
+else:
+    selected_book = st.selectbox(
+        "책 선택:",
+        book_folders,
+        format_func=_pretty_book_name,
+    )
 
 # 책이 변경되면 이미지 목록 초기화 + 로깅
 if st.session_state.current_book != selected_book:
@@ -225,7 +231,8 @@ if not st.session_state.loaded_images:
     st.session_state.loaded_images = load_images(str(folder))
 
 images = st.session_state.loaded_images
-st.success(f" {len(images)}개의 삽화 로드 완료")
+if not _hide_top_chrome:
+    st.success(f" {len(images)}개의 삽화 로드 완료")
 
 
 #-----------------
@@ -841,12 +848,17 @@ if mode == "이미지 선택 기반 제작":
                 with vc_col_pick:
                     _voice_options = list(b_text_based.VOICE_PRESETS.keys())
                     _picked = st.selectbox(
-                        "들어볼 보이스",
+                        "목소리 들어보기 선택",
                         options=_voice_options,
                         key="mode_a_voice_sample_pick",
                     )
                 with vc_col_btn:
-                    st.markdown("&nbsp;", unsafe_allow_html=True)
+                    # selectbox 라벨 높이만큼 spacer를 넣어 버튼이 입력 박스와 같은 줄에
+                    # 오도록 정렬. (Streamlit 기본 label height ≈ 1.85rem)
+                    st.markdown(
+                        '<div style="height:1.85rem"></div>',
+                        unsafe_allow_html=True,
+                    )
                     _play_clicked = st.button("🎧 듣기", key="mode_a_voice_sample_btn")
     
                 if _play_clicked:
@@ -938,7 +950,7 @@ if mode == "이미지 선택 기반 제작":
                 })
     
             if unique_view:
-                st.markdown("##### 💬 대사별 톤/말투 지시 (선택)")
+                st.markdown("##### 캐릭터가 말할 대사의 톤을 지시해주세요")
                 edited_view = st.data_editor(
                     unique_view,
                     column_order=["pages_display", "speaker_name", "quote", "tone"],
@@ -953,7 +965,7 @@ if mode == "이미지 선택 기반 제작":
                         ),
                         "quote": st.column_config.TextColumn("대사", disabled=True, width="large"),
                         "tone": st.column_config.TextColumn(
-                            "톤/말투 지시 (선택)",
+                            "목소리 말투 지시 칸",
                             width="medium",
                             help="예: 흥분된 목소리, 슬프게 흐느끼며, 무서운 분위기로",
                         ),
@@ -1000,14 +1012,11 @@ if mode == "이미지 선택 기반 제작":
     # [WIZARD STEP 3] 장면 편집 (텍스트 + 추가대사 + TTS + Runway)
     # --------------------------------
     if modeA_step == 3:
-        st.divider()
-        st.subheader("③ 생성 프로세스")
         log_stage_entry("mode_a_step1", {"book": selected_book})
 
         # =========================================================
         # [STEP 1] 페이지 원문 그대로 자막으로 사용 (Mode A 정책: 원본 텍스트)
         # =========================================================
-        st.markdown("#### 1️⃣ 자막 불러오기 및 수정")
 
         def _modeA_generate_step1_scripts():
             """선택된 페이지의 원문 텍스트를 그대로 자막으로 사용. 화자는 narrator 기본값,
@@ -1087,8 +1096,8 @@ if mode == "이미지 선택 기반 제작":
                 # 장면별 입력창 표시
                 for i, item in enumerate(st.session_state.step1_scripts):
                     img_name = st.session_state.selected_pages[i]
-                    
-                    st.markdown(f"**장면 {i+1}: {img_name}**")
+
+                    st.markdown(f"**장면 {i+1}**")
                     # 펼침면 dedup 안내 (직전 장면과 동일한 텍스트면 자동으로 무음 처리됨)
                     if item.get("_dedupe_of_prev") and not item.get("text"):
                         st.caption("↳ 이전 장면과 동일한 텍스트, 자막·오디오 자동 생략됨 (이미지만 노출). 다른 텍스트로 바꾸려면 아래 입력창에 직접 적어주세요.")
