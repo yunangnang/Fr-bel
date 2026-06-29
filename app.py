@@ -710,10 +710,10 @@ if mode == "이미지 선택 기반 제작":
     # --------------------------------
     if modeA_step == 2:
         st.divider()
-        st.subheader("② 동화책 예고편 분위기 설정")
+        st.subheader("동화책 예고편 분위기 설정")
 
         PROMPT = st.text_input(
-            "예고편의 전체적인 분위기를 정해주세요!",
+            "동화 예고편의 전체적인 분위기를 자세하게 지시해주세요.",
             value=st.session_state.modeA_prompt,
             key="modeA_prompt_input",
         )
@@ -799,13 +799,26 @@ if mode == "이미지 선택 기반 제작":
                         c.get("voice_type", "narrator"), "🎙️ 나레이터"
                     )
     
-            st.markdown("##### 🎙️ 캐릭터 프로필 (목소리 지정)")
-            st.caption("첫 행의 **나레이터**는 본문 나레이션 전체에 적용됩니다. 따옴표 안 대사는 각 캐릭터 보이스로 합성.")
+            st.markdown("##### 캐릭터 목소리 지정")
+
+            # 사용자에게 친화적인 ID 표시(_narrator_ → 해설자, char_01 → 등장인물1)를
+            # 별도 컬럼으로 추가. 실제 id 필드는 코드 로직에서 그대로 사용.
+            def _friendly_char_id(raw_id: str) -> str:
+                if raw_id == NARRATOR_ID:
+                    return "해설자"
+                m = re.match(r"char_(\d+)", raw_id or "")
+                if m:
+                    return f"등장인물{int(m.group(1))}"
+                return raw_id or ""
+
+            for c in chars_data:
+                c["display_id"] = _friendly_char_id(c.get("id", ""))
+
             edited_chars = st.data_editor(
                 chars_data,
-                column_order=["id", "name", "voice_label"],
+                column_order=["display_id", "name", "voice_label"],
                 column_config={
-                    "id": st.column_config.TextColumn("ID", disabled=True, width="small"),
+                    "display_id": st.column_config.TextColumn("ID", disabled=True, width="small"),
                     "name": st.column_config.TextColumn("이름", width="medium"),
                     "voice_label": st.column_config.SelectboxColumn(
                         "🎙️ 지정 목소리",
@@ -823,7 +836,7 @@ if mode == "이미지 선택 기반 제작":
     
             # 🎧 보이스 미리듣기 — 보이스 종류별로 어떤 느낌인지 한 번에 들어볼 수 있도록.
             # UI 부담을 줄이려고 expander 안에 selectbox + 듣기 버튼 1쌍만 둠.
-            with st.expander("🎧 보이스 미리듣기 (각 보이스 샘플 들어보고 고르기)", expanded=False):
+            with st.expander("목소리 들어보고 고르기", expanded=True):
                 vc_col_pick, vc_col_btn = st.columns([3, 1])
                 with vc_col_pick:
                     _voice_options = list(b_text_based.VOICE_PRESETS.keys())
