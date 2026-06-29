@@ -641,10 +641,23 @@ if mode == "이미지 선택 기반 제작":
             cols = st.columns(4)
             selected = list(st.session_state.selected_pages)
 
+            def _pretty_image_label(file_name: str) -> str:
+                """이미지 파일명에서 페이지 번호만 추출. '..._#07.png' → '07'."""
+                m = re.search(r"_#(\d+)\.(?:png|jpg|jpeg)", file_name, re.IGNORECASE)
+                if m:
+                    return m.group(1)
+                m = re.search(r"page_(\d+)", file_name, re.IGNORECASE)
+                if m:
+                    return m.group(1).zfill(2)
+                m = re.search(r"_(\d+)\.(?:png|jpg|jpeg)$", file_name, re.IGNORECASE)
+                if m:
+                    return m.group(1).zfill(2)
+                return file_name
+
             for i, (name, img) in enumerate(images):
                 with cols[i % 4]:
                     st.image(img, use_container_width=True)
-                    if st.checkbox(name, name in selected, key=f"chk_{name}"):
+                    if st.checkbox(_pretty_image_label(name), name in selected, key=f"chk_{name}"):
                         if name not in selected:
                             selected.append(name)
                     else:
