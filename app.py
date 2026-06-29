@@ -951,8 +951,13 @@ if mode == "이미지 선택 기반 제작":
     
             if unique_view:
                 st.markdown("##### 캐릭터가 말할 대사의 톤을 지시해주세요")
-                edited_view = st.data_editor(
-                    unique_view,
+                # dict 리스트를 그대로 넘기면 data_editor가 행을 추적 못 해 가끔
+                # 사용자 입력이 사라지는 버그가 있음. DataFrame으로 변환해서
+                # 안정된 인덱스를 부여하면 입력값 보존됨.
+                import pandas as _pd
+                _editor_df = _pd.DataFrame(unique_view)
+                edited_df = st.data_editor(
+                    _editor_df,
                     column_order=["pages_display", "speaker_name", "quote", "tone"],
                     column_config={
                         "pages_display": st.column_config.TextColumn("Pages", disabled=True, width="small"),
@@ -975,6 +980,8 @@ if mode == "이미지 선택 기반 제작":
                     hide_index=True,
                     key="mode_a_dialogue_editor",
                 )
+                # DataFrame → dict 리스트로 되돌려 기존 머지 로직 재사용.
+                edited_view = edited_df.to_dict("records")
                 # 편집한 화자/톤을 quote 기준으로 dialogue_map의 모든 동일 항목에 머지.
                 # 화자: 표시명 → speaker_id로 역매핑. (narrator)는 빈 id로 저장해 _lookup_quote
                 # 단계에서 narrator로 자연스럽게 폴백되게 함.
