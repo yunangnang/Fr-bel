@@ -171,8 +171,20 @@ if not book_folders:
     st.error("character 폴더에 책이 없습니다.")
     st.stop()
 
+def _pretty_book_name(folder: str) -> str:
+    """폴더명 '리딩토탈_48개월_내지_헨젤과그레텔_재쇄2_ISBN' → '48_헨젤과그레텔'.
+    매칭 실패 시 원본 폴더명 그대로 반환."""
+    m = re.search(r"_(\d+)개월_(?:내지|표지)_(.+?)_[^_]+_ISBN$", folder)
+    if m:
+        return f"{m.group(1)}_{m.group(2)}"
+    return folder
+
 log_stage_entry("book_select")
-selected_book = st.selectbox("책 선택:", book_folders)
+selected_book = st.selectbox(
+    "책 선택:",
+    book_folders,
+    format_func=_pretty_book_name,
+)
 
 # 책이 변경되면 이미지 목록 초기화 + 로깅
 if st.session_state.current_book != selected_book:
