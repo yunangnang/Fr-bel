@@ -1130,8 +1130,8 @@ if mode == "이미지 선택 기반 제작":
                         expanded=True,
                     ):
                         st.caption(
-                            "본문에 새로 적은 문장을 아래에 다시 적고 화자·톤을 골라주세요. "
-                            "🎧 미리듣기로 톤을 바꿔가며 들어볼 수 있어요."
+                            "본문에 새로 추가하신 문장을 추가문장 칸에 다시 적고 "
+                            "해당 문장을 읽을 화자 목소리를 선택 및 말투를 지시해주세요."
                         )
     
                         for ei, ex in enumerate(_existing_extras):
@@ -1247,9 +1247,9 @@ if mode == "이미지 선택 기반 제작":
                     _has_scene_audio = bool(_scene_audio_info and _scene_audio_info.get("path")
                                             and os.path.exists(_scene_audio_info["path"]))
                     _btn_label = (
-                        "🎧 목소리 다시 생성하기"
+                        "목소리 다시 생성해서 확인해보기"
                         if _has_scene_audio
-                        else "🎧 목소리 생성하기"
+                        else "목소리 생성해서 확인해보기"
                     )
     
                     if st.button(_btn_label, key=f"scene_tts_btn_{i}"):
@@ -1338,14 +1338,16 @@ if mode == "이미지 선택 기반 제작":
                         st.caption(f"⏱ {_dur:.1f}초")
                         st.audio(_scene_audio_info["path"])
     
-                    # 🎬 캐릭터 움직임 설정 — TTS 아래로 이동. 그 장면 전용 Runway 프롬프트.
-                    with st.expander("🎬 캐릭터 움직임 설정", expanded=True):
+                    # 캐릭터 움직임 설정 — TTS 아래. 그 장면 전용 Runway 프롬프트.
+                    with st.expander("캐릭터 움직임 설정", expanded=True):
+                        st.caption("해당 삽화를 영상화할 때 적용할 움직임을 지시해주세요.")
                         st.text_input(
-                            label="이 장면에만 적용할 프롬프트",
+                            label="이 장면 움직임 프롬프트",
+                            label_visibility="collapsed",
                             value=item.get("runway_prompt", ""),
                             placeholder="예: child runs through dark forest, scared",
                             key=f"script_rw_prompt_{i}",
-                            help="입력하면 이 장면만 이 프롬프트로 Runway 영상을 생성합니다.",
+                            help="입력하면 이 장면만 이 프롬프트로 영상을 생성합니다.",
                         )
     
                     # 🎬 이 장면 영상 — Runway 단발 호출로 결과 확인 후 마음에 안 들면 재생성.
@@ -1358,9 +1360,9 @@ if mode == "이미지 선택 기반 제작":
                         and os.path.exists(_scene_vid_info["raw_path"])
                     )
                     _rw_btn_label = (
-                        "🎬 이 장면 영상 다시 생성"
+                        "영상 다시 만들기"
                         if _has_scene_vid
-                        else "🎬 이 장면 영상 생성"
+                        else "영상화하기"
                     )
                     if st.button(_rw_btn_label, key=f"scene_runway_btn_{i}"):
                         _scene_rw_prompt = (st.session_state.get(f"script_rw_prompt_{i}") or "").strip()
