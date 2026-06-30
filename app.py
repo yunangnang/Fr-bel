@@ -280,6 +280,7 @@ if mode == "이미지 선택 기반 제작":
     # =========================================================
     MODEA_STEPS = [
         "이미지 선택",
+        "분위기 설정",
         "캐릭터 보이스",
         "장면 편집",
         "최종 합성",
@@ -714,8 +715,7 @@ if mode == "이미지 선택 기반 제작":
         st.stop()
 
     # --------------------------------
-    # [WIZARD STEP 2] 분위기·캐릭터 보이스 설정
-    # (BGM helpers, session_state init, NARRATOR setup은 SHARED SETUP으로 이동됨)
+    # [WIZARD STEP 2] 분위기 설정 — 예고편 전체 톤을 한 줄로 지시.
     # --------------------------------
     if modeA_step == 2:
         st.divider()
@@ -727,6 +727,15 @@ if mode == "이미지 선택 기반 제작":
             key="modeA_prompt_input",
         )
         st.session_state.modeA_prompt = PROMPT
+        _render_modeA_nav(prev_ok=True, next_ok=True)
+        st.stop()
+
+    # --------------------------------
+    # [WIZARD STEP 3] 캐릭터 보이스 설정 + 대사 톤 지시
+    # (BGM helpers, session_state init, NARRATOR setup은 SHARED SETUP으로 이동됨)
+    # --------------------------------
+    if modeA_step == 3:
+        st.divider()
 
         # mode_a_characters가 None이면 narrator만 있는 dict로 초기화
         if st.session_state.mode_a_characters is None:
@@ -1018,9 +1027,9 @@ if mode == "이미지 선택 기반 제작":
         st.stop()
 
     # --------------------------------
-    # [WIZARD STEP 3] 장면 편집 (텍스트 + 추가대사 + TTS + Runway)
+    # [WIZARD STEP 4] 장면 편집 (텍스트 + 추가대사 + TTS + Runway)
     # --------------------------------
-    if modeA_step == 3:
+    if modeA_step == 4:
         log_stage_entry("mode_a_step1", {"book": selected_book})
 
         # =========================================================
@@ -1179,7 +1188,7 @@ if mode == "이미지 선택 기반 제작":
                                 if _ex_spk not in _ex_spk_list:
                                     _ex_spk_list.append(_ex_spk)
                                 st.selectbox(
-                                    label="화자",
+                                    label="화자를 선택해주세요",
                                     options=_ex_spk_list,
                                     index=_ex_spk_list.index(_ex_spk),
                                     format_func=lambda v: SPEAKER_LABELS_KR.get(v, v),
@@ -1465,42 +1474,25 @@ if mode == "이미지 선택 기반 제작":
             (a and a.get("path")) for a in (st.session_state.step2_audio or [])
         )
         if not _has_any_audio:
-            st.success("전체 목소리 생성해서 확인해보기 버튼과 영상화하기 버튼을 클릭했는지 확인해주세요")
+            st.success("[전체 목소리 생성해서 확인해보기] 버튼 과 [영상화하기] 버튼을 클릭했는지 확인해주세요")
         _render_modeA_nav(prev_ok=True, next_ok=_has_any_audio)
         st.stop()
 
     # --------------------------------
-    # [WIZARD STEP 4] BGM 설정 + 최종 영상 합성
+    # [WIZARD STEP 5] BGM 설정 + 최종 영상 합성
     # --------------------------------
-    if modeA_step == 4:
+    if modeA_step == 5:
         log_stage_entry("mode_a_step4", {"book": selected_book})
 
     # ---------------------------------------------------------
     # [STEP 2] 오디오 검토 (장면별 TTS가 하나라도 생성된 경우)
     # ---------------------------------------------------------
         if st.session_state.step2_audio is not None:
-            # 장면별로 이미 위에서 들을 수 있으므로 디폴트는 접힘 — 전체 한눈에 보고 싶을 때만 펼침.
-            with st.expander("🎧 음성 한눈에 보기 (전체 장면)", expanded=False):
-                for i, audio_info in enumerate(st.session_state.step2_audio):
-                    path = audio_info["path"]
-                    dur = audio_info["duration"]
-                    script = st.session_state.step1_scripts[i]["text"]
-    
-                    # dur가 None일 경우 0.0으로 표시
-                    dur_display = f"{dur:.1f}" if dur is not None else "0.0"
-    
-                    st.write(f"**장면 {i+1}** ({dur_display}초) : {script}")
-    
-                    if path and os.path.exists(path):
-                        st.audio(path)
-                    else:
-                        st.caption("🔇 음성 없음 (생성 실패 또는 무음)")
-    
             # =========================================================
             # [STEP 3] Runway 영상 생성 및 최종 병합
             # =========================================================
             st.divider()
-            st.markdown("#### 🎵 배경음악(BGM) 설정")
+            st.markdown("#### 배경음악 BGM 적용하기")
     
             use_bgm = st.checkbox("배경음악 사용 (페이지별 자동 매칭)", value=False)
             bgm_volume = 0.15  # default, used if use_bgm is enabled later
@@ -1522,7 +1514,7 @@ if mode == "이미지 선택 기반 제작":
             # [STEP 3] 최종 영상 합성 — 장면별로 만든 Runway·TTS·BGM을 한 영상으로 묶음
             # =========================================================
             st.divider()
-            st.markdown("#### 3️⃣ 최종 영상 합성")
+            st.markdown("#### 최종 예고편 생성하기")
             log_stage_entry("mode_a_step3", {"book": selected_book})
     
             # 캐시된 장면별 Runway 개수 표시 → 사용자가 크레딧 차감 여부 미리 파악
@@ -1536,13 +1528,8 @@ if mode == "이미지 선택 기반 제작":
     
             if _missing == 0 and _total_scenes > 0:
                 st.success(f"✅ 모든 장면({_total_scenes}개) Runway 영상이 준비됨. 합성만 진행되어 크레딧 차감 없음.")
-            elif _missing > 0:
-                st.warning(
-                    f"⚠️ {_total_scenes}개 장면 중 {_missing}개가 아직 Runway 미생성 상태예요. "
-                    f"이 버튼을 누르면 미생성 장면만 새로 Runway 호출 (크레딧 차감)."
-                )
-    
-            if st.button("🎬 최종 영상 합성", type="primary"):
+
+            if st.button("최종 영상 합성하기"):
                 log_button_click("mode_a_step3_compose", {
                     "scene_count": len(st.session_state.selected_pages),
                     "cached_runway": _cached_count,
