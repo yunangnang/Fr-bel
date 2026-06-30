@@ -19,6 +19,9 @@ venv/
 # 세션 산출물 (미리보기 영상, TTS mp3, 합성 결과 등)
 outputs/
 
+# 로컬 테스트로 생성된 세션 이벤트 로그
+events.jsonl
+
 # Streamlit Secrets로 복사용 임시 파일 (private key 포함)
 _streamlit_secrets_to_paste.toml
 .streamlit/

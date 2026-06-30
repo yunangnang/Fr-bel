@@ -95,6 +95,10 @@ st.markdown(
         /* 라디오·체크박스 항목 간격 살짝 넓힘 (터치 오탑 방지) */
         .stRadio > div { gap: 0.4rem !important; }
     }
+    /* rerun 진행 중 이전 콘텐츠가 불투명하게 잔상으로 남는 현상을 숨김.
+       — 사용자가 '다음' 버튼을 눌렀을 때 이전 단계 위젯이 페이드 아웃되지 않고
+       즉시 사라지도록 처리. */
+    [data-stale="true"] { opacity: 0 !important; pointer-events: none !important; }
     </style>
     """,
     unsafe_allow_html=True,
@@ -116,7 +120,6 @@ if "session_id" not in st.session_state:
     st.session_state.session_id = ""
 
 if not st.session_state.user_name:
-    st.info("👋 시작 전 이름을 입력해 주세요. 워크숍 데이터가 이 이름으로 저장됩니다.")
     _name = st.text_input("이름:", placeholder="예: 김민지", key="user_name_input")
     if st.button("✨ 시작하기", type="primary"):
         if _name and _name.strip():
@@ -631,9 +634,8 @@ if mode == "이미지 선택 기반 제작":
     # [WIZARD STEP 1] 삽화 선택
     # --------------------------------
     if modeA_step == 1:
-        st.subheader("① 사용할 삽화 선택")
-        st.success("예고편 생성에 사용할 장면을 골라주세요. 개수제한은 없습니다.")
-        st.caption("각 페이지의 그림과 텍스트를 함께 보고 영상에 쓸 장면을 고르세요.")
+        st.subheader("사용할 삽화 선택")
+        st.success("예고편 생성에 사용할 장면을 개수제한없이 골라주세요.")
 
         with st.form("select_form"):
             cols = st.columns(4)
@@ -1085,13 +1087,13 @@ if mode == "이미지 선택 기반 제작":
         # [STEP 1.5] 대본 검토 및 수정 UI (1단계 완료 시 표시)
         # ---------------------------------------------------------
         if st.session_state.step1_scripts is not None:
-            st.success("✅ 대본 초안이 생성되었습니다. 내용을 수정하고 2단계로 넘어가세요.")
+            st.success("선생님께서 동화책 수업을 하실 때 아동에게 질문하고, 상호작용하는 수업과정을 그대로 반영하시면 됩니다.")
 
             # 수정된 내용을 담을 리스트 (UI 렌더링용이 아니라 실제 데이터 저장용)
             # Streamlit은 위젯 값을 바로 세션에 반영하지 않으므로, form이나 콜백을 쓰거나
             # 아래처럼 화면에 뿌려진 widget의 값을 나중에 읽어와야 합니다.
 
-            with st.expander("선택하신 삽화 페이지와 동화 내용입니다.", expanded=True):
+            with st.expander("선택하신 삽화 페이지와 해당 페이지 동화 내용입니다. 해당 장면의 대사가 예고편에 소리요소로 반영됩니다", expanded=True):
                 updated_scripts = []
                 
                 # 장면별 입력창 표시
@@ -1112,6 +1114,20 @@ if mode == "이미지 선택 기반 제작":
                         "young_male", "young_female",
                         "animal", "none",
                     ]
+                    # 화자 ID를 화면에 표시할 때 사용할 한글 라벨. 데이터는 영문 ID 그대로 저장.
+                    SPEAKER_LABELS_KR = {
+                        "narrator": "해설자",
+                        "child_male": "남자아이",
+                        "child_female": "여자아이",
+                        "adult_male": "남자 어른",
+                        "adult_female": "여자 어른",
+                        "elder_male": "할아버지",
+                        "elder_female": "할머니",
+                        "young_male": "청년 남자",
+                        "young_female": "청년 여자",
+                        "animal": "동물",
+                        "none": "없음",
+                    }
     
                     col_img, col_text = st.columns([1, 4])
     
@@ -1121,11 +1137,16 @@ if mode == "이미지 선택 기반 제작":
                             st.image(img_obj)
     
                     with col_text:
+                        # 텍스트 길이에 맞게 height 동적 계산 — 스크롤 없이 한 화면에 다 보이도록.
+                        # 한 줄 약 40자 가정 + 명시적 줄바꿈 합산. 최소 70, 최대 600.
+                        _txt = item["text"] or ""
+                        _line_count = max(1, _txt.count("\n") + 1 + len(_txt) // 40)
+                        _ta_height = max(70, min(600, _line_count * 28 + 20))
                         new_text = st.text_area(
-                            label="대사 (Subtitle)",
-                            value=item["text"],
+                            label="대사",
+                            value=_txt,
                             key=f"script_text_{i}",
-                            height=70,
+                            height=_ta_height,
                         )
     
                     # 🙋 추가 문장 (워크숍 인터랙션) — 본문 안에 적어둔 새 문장을 여기에 다시
@@ -1133,7 +1154,7 @@ if mode == "이미지 선택 기반 제작":
                     # 원래대로 처리. 자막은 본문 그대로 사용되므로 시각적 흐름은 안 끊김.
                     _existing_extras = item.get("extra_lines", []) or []
                     with st.expander(
-                        f"🙋 추가 대사 작성하기 — {len(_existing_extras)}개",
+                        f"새롭게 추가한 대사를 작성해주세요 — {len(_existing_extras)}개",
                         expanded=True,
                     ):
                         st.caption(
@@ -1161,6 +1182,7 @@ if mode == "이미지 선택 기반 제작":
                                     label="화자",
                                     options=_ex_spk_list,
                                     index=_ex_spk_list.index(_ex_spk),
+                                    format_func=lambda v: SPEAKER_LABELS_KR.get(v, v),
                                     key=f"extra_spk_{i}_{ei}",
                                 )
                             with ex_col_del:
@@ -1170,69 +1192,66 @@ if mode == "이미지 선택 기반 제작":
                                     st.session_state.step1_scripts[i]["extra_lines"] = _existing_extras
                                     st.rerun()
     
-                            # 2행: 톤/말투 지시 + 미리듣기 버튼
-                            ex_col_tone, ex_col_prev = st.columns([4, 1])
-                            with ex_col_tone:
-                                st.text_input(
-                                    label="톤/말투 지시 (선택)",
-                                    value=ex.get("tone", ""),
-                                    key=f"extra_tone_{i}_{ei}",
-                                    placeholder="예: 흥분된 목소리, 속삭이듯, 매우 과장되게",
-                                    help="Gemini Pro 엔진에서 이 prompt가 음성 톤에 반영됩니다.",
-                                )
-                            with ex_col_prev:
-                                st.markdown("&nbsp;", unsafe_allow_html=True)
-                                if st.button("🎧 미리듣기", key=f"extra_prev_btn_{i}_{ei}"):
-                                    _pv_text = (st.session_state.get(f"extra_text_{i}_{ei}") or "").strip()
-                                    _pv_spk = st.session_state.get(f"extra_spk_{i}_{ei}") or "narrator"
-                                    _pv_tone = (st.session_state.get(f"extra_tone_{i}_{ei}") or "").strip()
-                                    if not _pv_text:
-                                        st.warning("문장을 먼저 적어주세요.")
+                            # 2행: 톤/말투 지시 (한 줄 전체 사용)
+                            st.text_input(
+                                label="추가하신 문장을 읽을 목소리 톤을 지시해주세요",
+                                value=ex.get("tone", ""),
+                                key=f"extra_tone_{i}_{ei}",
+                                placeholder="예: 흥분된 목소리, 속삭이듯, 매우 과장되게",
+                                help="Gemini Pro 엔진에서 이 prompt가 음성 톤에 반영됩니다.",
+                            )
+                            # 3행: 미리듣기 버튼 — 톤 지시 칸 아래에 단독 배치.
+                            if st.button("🎧 미리듣기", key=f"extra_prev_btn_{i}_{ei}"):
+                                _pv_text = (st.session_state.get(f"extra_text_{i}_{ei}") or "").strip()
+                                _pv_spk = st.session_state.get(f"extra_spk_{i}_{ei}") or "narrator"
+                                _pv_tone = (st.session_state.get(f"extra_tone_{i}_{ei}") or "").strip()
+                                if not _pv_text:
+                                    st.warning("문장을 먼저 적어주세요.")
+                                else:
+                                    # 캐릭터 프로필에서 narrator 보이스 추출
+                                    _cd = st.session_state.get("mode_a_characters") or {}
+                                    _nar = next((c for c in _cd.get("characters", [])
+                                                 if c.get("id") == "_narrator_"), None)
+                                    _nar_label = _nar.get("voice_label") if _nar else None
+                                    _nar_voice = b_text_based.VOICE_PRESETS.get(_nar_label) if _nar_label else None
+                                    _resolved_spk = _nar_voice if (_pv_spk == "narrator" and _nar_voice) else _pv_spk
+                                    # tone → style_prompt
+                                    _style = (
+                                        f"Roleplay with a '{_pv_tone}' tone. "
+                                        f"Speak the following Korean text naturally with matching emotion."
+                                    ) if _pv_tone else ""
+                                    # 합성 + 캐시
+                                    _prev_dir = SESSION_DIR / f"preview_extras_{st.session_state.proc_uid}"
+                                    _prev_dir.mkdir(parents=True, exist_ok=True)
+                                    _prev_path = _prev_dir / f"extra_{i:02d}_{ei:02d}.mp3"
+                                    with st.spinner("미리듣기 합성 중..."):
+                                        _ok = text_to_speech(
+                                            _pv_text, str(_prev_path),
+                                            speaker=_resolved_spk,
+                                            engine=MODE_A_TTS_ENGINE,
+                                            style_prompt=_style,
+                                        )
+                                    if _ok and _prev_path.exists():
+                                        st.session_state[f"extra_audio_{i}_{ei}"] = str(_prev_path)
+                                        _try_key = f"extra_prev_try_{i}_{ei}"
+                                        st.session_state[_try_key] = st.session_state.get(_try_key, 0) + 1
+                                        log_event("modeA_extra_preview", {
+                                            "scene": i, "extra_idx": ei,
+                                            "text": _pv_text,
+                                            "speaker": _pv_spk,
+                                            "tone": _pv_tone,
+                                            "attempt": st.session_state[_try_key],
+                                            "success": True,
+                                        })
                                     else:
-                                        # 캐릭터 프로필에서 narrator 보이스 추출
-                                        _cd = st.session_state.get("mode_a_characters") or {}
-                                        _nar = next((c for c in _cd.get("characters", [])
-                                                     if c.get("id") == "_narrator_"), None)
-                                        _nar_label = _nar.get("voice_label") if _nar else None
-                                        _nar_voice = b_text_based.VOICE_PRESETS.get(_nar_label) if _nar_label else None
-                                        _resolved_spk = _nar_voice if (_pv_spk == "narrator" and _nar_voice) else _pv_spk
-                                        # tone → style_prompt
-                                        _style = (
-                                            f"Roleplay with a '{_pv_tone}' tone. "
-                                            f"Speak the following Korean text naturally with matching emotion."
-                                        ) if _pv_tone else ""
-                                        # 합성 + 캐시
-                                        _prev_dir = SESSION_DIR / f"preview_extras_{st.session_state.proc_uid}"
-                                        _prev_dir.mkdir(parents=True, exist_ok=True)
-                                        _prev_path = _prev_dir / f"extra_{i:02d}_{ei:02d}.mp3"
-                                        with st.spinner("미리듣기 합성 중..."):
-                                            _ok = text_to_speech(
-                                                _pv_text, str(_prev_path),
-                                                speaker=_resolved_spk,
-                                                engine=MODE_A_TTS_ENGINE,
-                                                style_prompt=_style,
-                                            )
-                                        if _ok and _prev_path.exists():
-                                            st.session_state[f"extra_audio_{i}_{ei}"] = str(_prev_path)
-                                            _try_key = f"extra_prev_try_{i}_{ei}"
-                                            st.session_state[_try_key] = st.session_state.get(_try_key, 0) + 1
-                                            log_event("modeA_extra_preview", {
-                                                "scene": i, "extra_idx": ei,
-                                                "text": _pv_text,
-                                                "speaker": _pv_spk,
-                                                "tone": _pv_tone,
-                                                "attempt": st.session_state[_try_key],
-                                                "success": True,
-                                            })
-                                        else:
-                                            st.error("미리듣기 합성 실패")
-                                            log_event("modeA_extra_preview", {
-                                                "scene": i, "extra_idx": ei,
-                                                "text": _pv_text,
-                                                "speaker": _pv_spk,
-                                                "tone": _pv_tone,
-                                                "success": False,
-                                            })
+                                        st.error("미리듣기 합성 실패")
+                                        log_event("modeA_extra_preview", {
+                                            "scene": i, "extra_idx": ei,
+                                            "text": _pv_text,
+                                            "speaker": _pv_spk,
+                                            "tone": _pv_tone,
+                                            "success": False,
+                                        })
     
                             # 미리듣기 결과 (있으면 표시)
                             _prev_audio = st.session_state.get(f"extra_audio_{i}_{ei}")
@@ -1254,9 +1273,9 @@ if mode == "이미지 선택 기반 제작":
                     _has_scene_audio = bool(_scene_audio_info and _scene_audio_info.get("path")
                                             and os.path.exists(_scene_audio_info["path"]))
                     _btn_label = (
-                        "목소리 다시 생성해서 확인해보기"
+                        "전체 목소리 다시 생성해서 확인해보기"
                         if _has_scene_audio
-                        else "목소리 생성해서 확인해보기"
+                        else "전체 목소리 생성해서 확인해보기"
                     )
     
                     if st.button(_btn_label, key=f"scene_tts_btn_{i}"):
@@ -1352,7 +1371,7 @@ if mode == "이미지 선택 기반 제작":
                             label="이 장면 움직임 프롬프트",
                             label_visibility="collapsed",
                             value=item.get("runway_prompt", ""),
-                            placeholder="예: child runs through dark forest, scared",
+                            placeholder="예: 남자캐릭터가 활짝 웃으며 성큼성큼 앞으로 걸어나가며 주변을 두리번두리번 살핀다.",
                             key=f"script_rw_prompt_{i}",
                             help="입력하면 이 장면만 이 프롬프트로 영상을 생성합니다.",
                         )
@@ -1446,7 +1465,7 @@ if mode == "이미지 선택 기반 제작":
             (a and a.get("path")) for a in (st.session_state.step2_audio or [])
         )
         if not _has_any_audio:
-            st.info("최소 한 장면 이상 🎧 TTS 음성을 생성해야 다음 단계로 이동할 수 있어요.")
+            st.success("전체 목소리 생성해서 확인해보기 버튼과 영상화하기 버튼을 클릭했는지 확인해주세요")
         _render_modeA_nav(prev_ok=True, next_ok=_has_any_audio)
         st.stop()
 
